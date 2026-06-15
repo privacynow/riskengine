@@ -1,0 +1,349 @@
+openapi: "3.0.3"
+info:
+  title: "Risk/Decision Engine"
+  version: "2.0.0"
+servers:
+  - url: "http://localhost:8000"
+paths:
+  /checkpoints/{checkpoint_name}:
+    get:
+      summary: "Get checkpoint details by name"
+      operationId: "getCheckpointDetails"
+      parameters:
+        - name: "checkpoint_name"
+          in: "path"
+          required: true
+          schema:
+            type: string
+            example: "Onboarding"
+      responses:
+        '200':
+          description: "Checkpoint details retrieved successfully"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckpointResponse"
+        '404':
+          description: "Checkpoint not found"
+
+  /signals/{signal_name}:
+    get:
+      summary: "Get signal details by name"
+      operationId: "getSignalDetails"
+      parameters:
+        - name: "signal_name"
+          in: "path"
+          required: true
+          schema:
+            type: string
+            example: "age_check"
+      responses:
+        '200':
+          description: "Signal details retrieved successfully"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalResponse"
+        '404':
+          description: "Signal not found"
+
+  /decisions:
+    post:
+      summary: "Invoke a decision on a given checkpoint"
+      operationId: "makeDecision"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DecisionRequest"
+      responses:
+        '200':
+          description: "Decision made successfully"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecisionResponse"
+        '404':
+          description: "Checkpoint not found (or other not found issues)"
+
+  /decisions/{decision_id}:
+    get:
+      summary: "Get a historical decision (including signals) from the audit log"
+      operationId: "getHistoricalDecision"
+      parameters:
+        - name: "decision_id"
+          in: "path"
+          required: true
+          schema:
+            type: string
+            format: uuid
+            example: "d8bc349a-5e90-41be-b23a-879bfdc0c80a"
+      responses:
+        '200':
+          description: "Decision log details"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DecisionLogResponse"
+        '404':
+          description: "Decision not found"
+
+components:
+  schemas:
+    DecisionRequest:
+      type: object
+      properties:
+        checkpoint_name:
+          type: string
+          example: "Onboarding"
+        applicant_id:
+          type: string
+          description: "Unique applicant or entity ID for scoping certain signals"
+          nullable: true
+          example: "app123"
+        correlation_id:
+          type: string
+          description: "Optional correlation ID for tracking"
+          nullable: true
+          example: "CORR-001"
+      required:
+        - checkpoint_name
+
+    DecisionResponse:
+      type: object
+      properties:
+        decision_id:
+          type: string
+          format: uuid
+          description: "Unique ID of the decision"
+          example: "a35a7c4f-73f8-44a8-83b3-754a717c24a6"
+        final_decision_value:
+          type: string
+          description: "Stringified result of the DSL evaluation"
+          example: "True"
+        cost_incurred:
+          type: integer
+          description: "Total cost of signals invoked"
+          example: 45
+        signal_results:
+          type: object
+          additionalProperties:
+            type: string
+          description: "Dictionary of signal_name -> signal result"
+          example:
+            age_check: "True"
+            blacklist_check: "False"
+            kyc_score: "91"
+
+    CheckpointResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "22222222-2222-2222-2222-222222222201"
+        tenant_id:
+          type: string
+          format: uuid
+          example: "11111111-1111-1111-1111-111111111111"
+        name:
+          type: string
+          example: "Onboarding"
+        description:
+          type: string
+          nullable: true
+          example: "Initial user onboarding checkpoint."
+        type:
+          type: string
+          example: "onboarding"
+        dsl_expression:
+          type: string
+          example: "age_check and not (blacklist_check) and (kyc_score > 80)"
+        method_of_call:
+          type: string
+          nullable: true
+          example: "http://onboarding.example.com"
+        max_cost:
+          type: integer
+          example: 100
+        override_cost_flag:
+          type: boolean
+          example: false
+        timeout_seconds:
+          type: integer
+          example: 30
+        signals:
+          type: array
+          description: "List of signals associated to this checkpoint"
+          items:
+            $ref: "#/components/schemas/SignalEmbedded"
+
+    SignalEmbedded:
+      type: object
+      description: "Minimal representation of a signal within a checkpoint"
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        type:
+          type: string
+          enum:
+            - variable
+            - function
+            - internal_endpoint
+            - external_endpoint
+            - expression
+        method_of_call:
+          type: string
+          nullable: true
+        expression_body:
+          type: string
+          nullable: true
+        cost:
+          type: integer
+        cache_expiration_seconds:
+          type: integer
+        timeout_seconds:
+          type: integer
+        can_run_in_parallel:
+          type: boolean
+        order_of_evaluation:
+          type: integer
+        http_method:
+          type: string
+          nullable: true
+        request_url_params_template:
+          type: string
+          nullable: true
+        request_body_template:
+          type: string
+          nullable: true
+        request_headers_template:
+          type: string
+          nullable: true
+        bearer_token:
+          type: string
+          nullable: true
+        allow_caching:
+          type: boolean
+        global_reuse:
+          type: boolean
+
+    SignalResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "33333333-3333-3333-3333-333333333301"
+        tenant_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        type:
+          type: string
+        method_of_call:
+          type: string
+          nullable: true
+        expression_body:
+          type: string
+          nullable: true
+        cost:
+          type: integer
+        cache_expiration_seconds:
+          type: integer
+        timeout_seconds:
+          type: integer
+        can_run_in_parallel:
+          type: boolean
+        order_of_evaluation:
+          type: integer
+        http_method:
+          type: string
+          nullable: true
+        request_url_params_template:
+          type: string
+          nullable: true
+        request_body_template:
+          type: string
+          nullable: true
+        request_headers_template:
+          type: string
+          nullable: true
+        bearer_token:
+          type: string
+          nullable: true
+        allow_caching:
+          type: boolean
+        global_reuse:
+          type: boolean
+
+    DecisionLogResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        checkpoint_id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        applicant_id:
+          type: string
+          nullable: true
+        final_decision_value:
+          type: string
+        cost_incurred:
+          type: integer
+        correlation_id:
+          type: string
+          nullable: true
+        decision_timestamp:
+          type: string
+          format: date-time
+        signal_values:
+          type: array
+          items:
+            $ref: "#/components/schemas/SignalLogItem"
+
+    SignalLogItem:
+      type: object
+      properties:
+        signal_log_id:
+          type: string
+          format: uuid
+        signal_id:
+          type: string
+          format: uuid
+        applicant_id:
+          type: string
+          nullable: true
+        signal_value:
+          type: string
+          nullable: true
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        cost_incurred:
+          type: integer
+        success:
+          type: boolean

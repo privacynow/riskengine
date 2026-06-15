@@ -1,0 +1,724 @@
+openapi: "3.0.3"
+info:
+  title: "Risk/Decision Engine UI Backend"
+  version: "2.0.0"
+servers:
+  - url: "http://localhost:8000"
+paths:
+  /ui/tenants:
+    post:
+      summary: "Create a new tenant"
+      operationId: "createTenant"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TenantCreateUpdate"
+      responses:
+        '200':
+          description: "Tenant created"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantResponse"
+
+  /ui/tenants/{tenant_id}:
+    get:
+      summary: "Retrieve tenant by ID"
+      operationId: "getTenant"
+      parameters:
+        - name: tenant_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: "Tenant details"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantResponse"
+        '404':
+          description: "Tenant not found"
+    put:
+      summary: "Update tenant by ID"
+      operationId: "updateTenant"
+      parameters:
+        - name: tenant_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TenantCreateUpdate"
+      responses:
+        '200':
+          description: "Tenant updated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantResponse"
+        '404':
+          description: "Tenant not found"
+    delete:
+      summary: "Delete tenant by ID"
+      operationId: "deleteTenant"
+      parameters:
+        - name: tenant_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: "Tenant deleted"
+        '404':
+          description: "Tenant not found"
+
+  /ui/all_tenants:
+    get:
+      summary: "List all tenants"
+      operationId: "listAllTenants"
+      responses:
+        '200':
+          description: "List of all tenants"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TenantResponse"
+
+  /ui/search_tenants:
+    get:
+      summary: "Search tenants"
+      operationId: "searchTenants"
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: "Tenant search results"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TenantResponse"
+
+  /ui/checkpoints:
+    post:
+      summary: "Create a new checkpoint"
+      operationId: "createCheckpoint"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckpointCreateUpdate"
+      responses:
+        '200':
+          description: "Checkpoint created"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckpointCreateUpdateResponse"
+
+  /ui/checkpoints/{checkpoint_id}:
+    get:
+      summary: "Retrieve checkpoint by ID"
+      operationId: "getCheckpoint"
+      parameters:
+        - name: checkpoint_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: "Checkpoint details"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckpointCreateUpdateResponse"
+        '404':
+          description: "Checkpoint not found"
+    put:
+      summary: "Update checkpoint by ID"
+      operationId: "updateCheckpoint"
+      parameters:
+        - name: checkpoint_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckpointCreateUpdate"
+      responses:
+        '200':
+          description: "Checkpoint updated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckpointCreateUpdateResponse"
+        '404':
+          description: "Checkpoint not found"
+    delete:
+      summary: "Delete checkpoint by ID"
+      operationId: "deleteCheckpoint"
+      parameters:
+        - name: checkpoint_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: "Checkpoint deleted"
+        '404':
+          description: "Checkpoint not found"
+
+  /ui/all_checkpoints:
+    get:
+      summary: "List all checkpoints"
+      operationId: "listAllCheckpoints"
+      parameters:
+        - name: tenant_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: active_only
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: "List of all checkpoints"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CheckpointListItem"
+
+  /ui/search_checkpoints:
+    get:
+      summary: "Search checkpoints"
+      operationId: "searchCheckpoints"
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: "Checkpoint search results"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CheckpointListItem"
+
+  /ui/signals:
+    post:
+      summary: "Create a new signal"
+      operationId: "createSignal"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignalCreateUpdate"
+      responses:
+        '200':
+          description: "Signal created"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalCreateUpdateResponse"
+
+  /ui/signals/{signal_id}:
+    get:
+      summary: "Retrieve signal by ID"
+      operationId: "getSignal"
+      parameters:
+        - name: signal_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: "Signal details"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalCreateUpdateResponse"
+        '404':
+          description: "Signal not found"
+    put:
+      summary: "Update signal by ID"
+      operationId: "updateSignal"
+      parameters:
+        - name: signal_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignalCreateUpdate"
+      responses:
+        '200':
+          description: "Signal updated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SignalCreateUpdateResponse"
+        '404':
+          description: "Signal not found"
+    delete:
+      summary: "Delete signal by ID"
+      operationId: "deleteSignal"
+      parameters:
+        - name: signal_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: "Signal deleted"
+        '404':
+          description: "Signal not found"
+
+  /ui/all_signals:
+    get:
+      summary: "List all signals"
+      operationId: "listAllSignals"
+      parameters:
+        - name: tenant_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: checkpoint_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: active_only
+          in: query
+          required: false
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: "List of all signals"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SignalListItem"
+
+  /ui/search_signals:
+    get:
+      summary: "Search signals"
+      operationId: "searchSignals"
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: "Signal search results"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SignalListItem"
+
+  /ui/variable_values:
+    post:
+      summary: "Create a new variable value"
+      operationId: "createVariableValue"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VariableValueCreateUpdate"
+      responses:
+        '200':
+          description: "Variable value created"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VariableValueResponse"
+
+  /ui/variable_values/{variable_value_id}:
+    get:
+      summary: "Retrieve variable value by ID"
+      operationId: "getVariableValueItem"
+      parameters:
+        - name: variable_value_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: "Variable value details"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VariableValueResponse"
+        '404':
+          description: "Variable value not found"
+    put:
+      summary: "Update variable value by ID"
+      operationId: "updateVariableValue"
+      parameters:
+        - name: variable_value_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VariableValueCreateUpdate"
+      responses:
+        '200':
+          description: "Variable value updated"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VariableValueResponse"
+        '404':
+          description: "Variable value not found"
+    delete:
+      summary: "Delete variable value by ID"
+      operationId: "deleteVariableValue"
+      parameters:
+        - name: variable_value_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: "Variable value deleted"
+        '404':
+          description: "Variable value not found"
+
+  /ui/checkpoint_signals:
+    post:
+      summary: "Associate a signal with a checkpoint"
+      operationId: "createCheckpointSignal"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckpointSignalCreateUpdate"
+      responses:
+        '200':
+          description: "Association created"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckpointSignalResponse"
+
+  /ui/checkpoint_signals/{checkpoint_signal_id}:
+    delete:
+      summary: "Delete an association of checkpoint and signal by ID"
+      operationId: "deleteCheckpointSignal"
+      parameters:
+        - name: checkpoint_signal_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: "Association deleted"
+        '404':
+          description: "Checkpoint-signal link not found"
+
+components:
+  schemas:
+    # TENANT
+    TenantCreateUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+      required:
+        - name
+
+    TenantResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+
+    # CHECKPOINT
+    CheckpointCreateUpdate:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        type:
+          type: string
+        dsl_expression:
+          type: string
+        method_of_call:
+          type: string
+          nullable: true
+        max_cost:
+          type: integer
+          default: 0
+        override_cost_flag:
+          type: boolean
+          default: false
+        timeout_seconds:
+          type: integer
+          default: 30
+      required:
+        - tenant_id
+        - name
+        - type
+        - dsl_expression
+
+    CheckpointCreateUpdateResponse:
+      allOf:
+        - $ref: "#/components/schemas/CheckpointCreateUpdate"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+
+    CheckpointListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        type:
+          type: string
+        dsl_expression:
+          type: string
+          nullable: true
+
+    # SIGNAL
+    SignalCreateUpdate:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        type:
+          type: string
+          enum:
+            - variable
+            - function
+            - internal_endpoint
+            - external_endpoint
+            - expression
+        method_of_call:
+          type: string
+          nullable: true
+        expression_body:
+          type: string
+          nullable: true
+        cost:
+          type: integer
+          default: 0
+        cache_expiration_seconds:
+          type: integer
+          default: 0
+        timeout_seconds:
+          type: integer
+          default: 30
+        can_run_in_parallel:
+          type: boolean
+          default: false
+        order_of_evaluation:
+          type: integer
+          default: 1
+        http_method:
+          type: string
+          nullable: true
+          enum:
+            - GET
+            - POST
+            - PUT
+            - PATCH
+            - DELETE
+        request_url_params_template:
+          type: string
+          nullable: true
+        request_body_template:
+          type: string
+          nullable: true
+        request_headers_template:
+          type: string
+          nullable: true
+        bearer_token:
+          type: string
+          nullable: true
+        allow_caching:
+          type: boolean
+          default: false
+        global_reuse:
+          type: boolean
+          default: false
+      required:
+        - tenant_id
+        - name
+        - type
+
+    SignalCreateUpdateResponse:
+      allOf:
+        - $ref: "#/components/schemas/SignalCreateUpdate"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+
+    SignalListItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        type:
+          type: string
+        method_of_call:
+          type: string
+          nullable: true
+
+    # VARIABLE VALUES (stored in signal_variable_values)
+    VariableValueCreateUpdate:
+      type: object
+      properties:
+        signal_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        value:
+          type: string
+          nullable: true
+      required:
+        - signal_id
+        - name
+
+    VariableValueResponse:
+      allOf:
+        - $ref: "#/components/schemas/VariableValueCreateUpdate"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+
+    # CHECKPOINT-SIGNAL ASSOCIATION
+    CheckpointSignalCreateUpdate:
+      type: object
+      properties:
+        checkpoint_id:
+          type: string
+          format: uuid
+        signal_id:
+          type: string
+          format: uuid
+      required:
+        - checkpoint_id
+        - signal_id
+
+    CheckpointSignalResponse:
+      allOf:
+        - $ref: "#/components/schemas/CheckpointSignalCreateUpdate"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
