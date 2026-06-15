@@ -5,6 +5,7 @@ This project is a working prototype, not production-ready software.
 ## Milestone 1 (bootstrap + public repo hygiene) — complete
 
 - Repo hygiene, schema alignment, Docker bootstrap, smoke test, demo mocks, initial commit
+- README/runtime claims aligned with actual behavior; admin UI assets vendored locally; deployment docs added
 
 ## Milestone 2 (runtime correctness)
 

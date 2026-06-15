@@ -4,10 +4,14 @@ The Risk Decision Engine is a multi-tenant system that allows users (e.g., under
 
 1. Receives requests to evaluate a checkpoint (e.g., “Onboarding,” “Underwriting”).
 2. Loads configuration (e.g., a DSL expression, signals).
-3. Invokes each signal in a cost/timeout-aware, optionally parallel fashion.
+3. Invokes each signal in **evaluation order** (`order_of_evaluation`). Signals that share an order run concurrently today; the `can_run_in_parallel` flag is stored but not yet enforced (see [ROADMAP.md](ROADMAP.md)).
 4. Evaluates a final DSL expression referencing the signals.
 5. Logs everything for auditing.
-6. Caches signals to avoid redundant calls.
+6. Caches signals (in-memory and DB) when `allow_caching` is enabled.
+
+**Cost limits:** The engine skips signals when cumulative cost would exceed `max_cost` (unless `override_cost_flag` is set).
+
+**Not yet implemented:** Per-signal/checkpoint HTTP timeouts (external calls use a fixed 5s client timeout today) and selective parallelism based on `can_run_in_parallel`.
 
 It also includes a UI (a single-page application) and a UI Backend for admin/maintenance tasks like creating new tenants, checkpoints, signals, and variables.
 
@@ -43,16 +47,18 @@ When the user (or an external system) calls `POST /decisions` with `checkpoint_n
 
 1. **Lookup Checkpoint**: Queries checkpoints for a row matching the name.
 2. **Find Signals**: Joins with `checkpoint_signals → signals`.
-3. **Ordered Execution**: Signals are grouped by `order_of_evaluation` and invoked (with optional caching).
-4. **Evaluate DSL**: `simpleeval` evaluates the checkpoint expression using `{ signal_name: signal_value }`.
-5. **Asynchronous Logging**: Final decision and per-signal invocations are logged.
-6. **Response**: Returns `decision_id`, `final_decision_value`, `cost_incurred`, and `signal_results`.
+3. **Ordered execution:** Signals are grouped by `order_of_evaluation`. All signals in the same order group run concurrently; cost limits may skip expensive signals. Optional DB/in-memory caching applies when configured.
+4. **Evaluate DSL:** `simpleeval` evaluates the checkpoint expression using `{ signal_name: signal_value }`.
+5. **Asynchronous logging:** Final decision and per-signal invocations are logged.
+6. **Response:** Returns `decision_id`, `final_decision_value`, `cost_incurred`, and `signal_results`.
+
+See [ROADMAP.md](ROADMAP.md) for planned runtime improvements (tenant/current-version resolution, configurable timeouts, parallelism flags).
 
 ---
 
 ## UI and UI Backend
 
-The UI is a Vue 2 single-page app served at **`/admin/`** (static files under `ui/`). JSON admin APIs live under **`/ui/...`**.
+The UI is a Vue 2 single-page app served at **`/admin/`** (static files under `ui/`). JavaScript dependencies are **vendored locally** under `ui/vendor/` (no CDN required). JSON admin APIs live under **`/ui/...`**.
 
 Primary admin capabilities:
 
@@ -146,6 +152,12 @@ curl -s -X POST http://localhost:8000/decisions \
 ## Roadmap
 
 See [ROADMAP.md](ROADMAP.md) for milestone plan and known gaps (tenant-aware runtime, immutable versioning, CI, auth, etc.).
+
+---
+
+## Deployment
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for Docker Compose deployment and optional remote-host sync patterns.
 
 ---
 
