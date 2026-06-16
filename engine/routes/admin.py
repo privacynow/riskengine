@@ -1125,6 +1125,37 @@ def create_variable_value(payload: VariableValueCreateUpdate):
             conn.close()
 
 
+@router.get("/ui/signals/{signal_id}/variable_values")
+def list_signal_variable_values(signal_id: UuidStr, page: int = 1, size: int = 10):
+    """List stored variable values for a variable-type signal."""
+    page, size = clamp_pagination(page, size)
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        _get_signal_tenant_id(cur, signal_id)
+        base_query = """
+            SELECT id, signal_id, name, value
+              FROM signal_variable_values
+             WHERE signal_id = %s
+             ORDER BY name ASC, id ASC
+        """
+        total, rows, page, size = paginate_query(cur, base_query, (signal_id,), page, size)
+        items = [
+            {
+                "id": str(row[0]),
+                "signal_id": str(row[1]),
+                "name": row[2],
+                "value": row[3],
+            }
+            for row in rows
+        ]
+        return build_paginated_response(items, total, page, size)
+    finally:
+        if conn:
+            conn.close()
+
+
 @router.get("/ui/variable_values/{variable_value_id}")
 def get_variable_value_item(variable_value_id: UuidStr):
     conn = None

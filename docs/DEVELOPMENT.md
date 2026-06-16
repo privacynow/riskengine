@@ -101,10 +101,30 @@ The Vite dev server proxies `/ui` and `/decisions` to `http://localhost:8000`, s
 
 ## Resetting State
 
+Use this when you want a clean local environment with the curated demo data from `sql/02_sample_data.sql`:
+
 ```sh
-docker compose down -v
 bash scripts/create_demo_env.sh
+docker compose down -v
 docker compose up -d --build
+bash scripts/smoke_test.sh
 ```
 
 `create_demo_env.sh` preserves an existing database password but rotates auth tokens. Use the newly printed admin token after rerunning it.
+
+Postgres init SQL runs only when the database volume is created. If you remove seeded demo tenants from an existing volume, they will not come back until you reset the volume or manually re-apply the seed SQL.
+
+For visual regression tests, seed the deterministic visual tenant after the stack is running:
+
+```sh
+bash scripts/seed_visual_fixture.sh
+```
+
+If you only need to remove scratch/test tenants and keep the existing volume, use the API cleanup script:
+
+```sh
+python3 scripts/cleanup_demo_config_via_api.py --dry-run
+python3 scripts/cleanup_demo_config_via_api.py --yes
+```
+
+Use `--include-seed-tenants --yes` only when you intend to remove `SAMPLE LENDING`, `OTHER BANK`, or `VISUAL FIXTURE BANK`; a full volume reset is the preferred way to recreate them cleanly.

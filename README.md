@@ -71,6 +71,30 @@ docker compose down -v          # reset database volume
 bash scripts/bootstrap_smoke.sh # clean DB + API smoke
 ```
 
+## Reset Demo Data
+
+Use a full volume reset when you want a clean local environment with the curated demo tenants, checkpoints, signals, associations, and audit sample:
+
+```sh
+bash scripts/create_demo_env.sh
+docker compose down -v
+docker compose up -d --build
+bash scripts/smoke_test.sh
+```
+
+This is the most reliable path because Postgres runs `sql/01_schema.sql` and `sql/02_sample_data.sql` only when the database volume is first initialized. For visual regression data, seed the separate fixture after the stack is running:
+
+```sh
+bash scripts/seed_visual_fixture.sh
+```
+
+To remove only scratch/test tenants from a running database, use the API cleanup script instead:
+
+```sh
+python3 scripts/cleanup_demo_config_via_api.py --dry-run
+python3 scripts/cleanup_demo_config_via_api.py --yes
+```
+
 If Postgres authentication fails after regenerating `.env.local`, reset the volume:
 
 ```sh

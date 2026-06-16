@@ -22,6 +22,7 @@ other_tenant = "99999999-9999-9999-9999-999999999999"
 sample_token = secrets.token_hex(24)
 other_token = secrets.token_hex(24)
 admin_token = secrets.token_hex(24)
+dev_purge_confirm = secrets.token_hex(16)
 
 existing_db_password = None
 if env_file.is_file():
@@ -63,6 +64,8 @@ lines = [
     f"SMOKE_ADMIN_TOKEN={admin_token}",
     f"DB_PASSWORD={db_password}",
     f"POSTGRES_PASSWORD={db_password}",
+    "DECISION_ENGINE_DEV_PURGE=1",
+    f"DECISION_ENGINE_DEV_PURGE_CONFIRM={dev_purge_confirm}",
     "",
 ]
 env_file.write_text("\n".join(lines), encoding="utf-8")
@@ -71,6 +74,9 @@ os.chmod(env_file, 0o600)
 print(f"Wrote {env_file}")
 print(f"Wrote {tokens_file}")
 print(f"Admin bearer token: {admin_token}")
+print(f"Dev purge confirm header (X-Dev-Purge-Confirm): {dev_purge_confirm}")
+print("Dev purge body confirmPhrase:")
+print("  I understand this permanently deletes dev audit data for the tenant")
 if not existing_db_password:
     print("Generated new DB_PASSWORD. If Postgres auth fails, reset the volume:")
     print("  docker compose down -v && docker compose up -d --build")

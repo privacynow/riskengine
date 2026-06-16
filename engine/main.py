@@ -15,7 +15,8 @@ from .migrations import ensure_schema
 from .demo.mocks import mock_service_response
 from .services.security import is_local_mock_client
 from .models import TenantSuppliedError
-from .routes import admin, runtime
+from .services.dev_purge import dev_purge_enabled
+from .routes import admin, dev_purge, runtime
 
 OPENAPI_SECURITY_SCHEME = {
     "type": "http",
@@ -130,6 +131,8 @@ async def mock_service(mock_name: str, request: Request):
 
 app.include_router(runtime.router)
 app.include_router(admin.router)
+if dev_purge_enabled():
+    app.include_router(dev_purge.router)
 
 UI_DIST = Path(__file__).resolve().parent.parent / "ui" / "dist"
 if not UI_DIST.is_dir():

@@ -158,6 +158,19 @@ class PromotionRequest(BaseModel):
     promotion_reason: str = Field(..., alias="promotionReason", min_length=3, max_length=2000)
 
 
+class DevTenantPurgeRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    tenant_id: str = Field(..., alias="tenantId")
+    purge_reason: str = Field(..., alias="purgeReason", min_length=10, max_length=2000)
+    confirm_phrase: str = Field(..., alias="confirmPhrase")
+
+    @field_validator("tenant_id", mode="before")
+    @classmethod
+    def _validate_tenant_id(cls, value: object) -> str:
+        return parse_uuid(value, field="tenant_id")
+
+
 class CheckpointSignalCreateUpdate(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 

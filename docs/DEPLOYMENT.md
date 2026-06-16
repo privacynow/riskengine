@@ -74,13 +74,22 @@ First boot of the Postgres container runs, in order:
 1. `sql/01_schema.sql`
 2. `sql/02_sample_data.sql`
 
-To reset completely:
+Those files do not rerun on an existing Postgres volume. To recreate the curated demo data from scratch, reset the volume:
 
 ```sh
-bash scripts/destroy.sh
-bash scripts/run.sh
+bash scripts/create_demo_env.sh
+docker compose down -v
+docker compose up -d --build
 bash scripts/smoke_test.sh
 ```
+
+Visual regression fixtures are not part of normal database initialization. Seed them only when running browser/visual tests:
+
+```sh
+bash scripts/seed_visual_fixture.sh
+```
+
+For a running development database, `scripts/cleanup_demo_config_via_api.py` can remove scratch/test tenants through admin APIs. Use a volume reset when you want seeded tenants and demo policy restored cleanly.
 
 ## Admin UI at runtime
 

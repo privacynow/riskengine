@@ -39,6 +39,37 @@ SEED_SIGNAL_CURRENT: dict[str, dict[str, str]] = {
 }
 
 
+SEED_VARIABLE_VALUES: dict[str, tuple[str, str]] = {
+    "33333333-3333-3333-3333-333333333301": ("age_check", "True"),
+    "33333333-3333-3333-3333-333333333302": ("blocklist_check", "False"),
+    "33333333-3333-3333-3333-333333333303": ("previous_delinquency", "0"),
+    "33333333-3333-3333-3333-333333333304": ("active_loan", "True"),
+}
+
+
+def _restore_seed_variable_values(cur) -> None:
+    for signal_id, (name, value) in SEED_VARIABLE_VALUES.items():
+        cur.execute(
+            """
+            INSERT INTO signal_variable_values (id, signal_id, name, value)
+            SELECT uuid_generate_v4(), %s, %s, %s
+             WHERE NOT EXISTS (
+                    SELECT 1 FROM signal_variable_values
+                     WHERE signal_id = %s AND name = %s
+               )
+            """,
+            (signal_id, name, value, signal_id, name),
+        )
+        cur.execute(
+            """
+            UPDATE signal_variable_values
+               SET value = %s, updated_at = NOW()
+             WHERE signal_id = %s AND name = %s
+            """,
+            (value, signal_id, name),
+        )
+
+
 def _upsert_current_versions(
     cur,
     table: str,
@@ -68,6 +99,7 @@ def reset_integration_seed_state() -> None:
         _upsert_current_versions(
             cur, "signal_current_version", "signal_id", SEED_SIGNAL_CURRENT
         )
+        _restore_seed_variable_values(cur)
         cur.execute(
             """
             DELETE FROM signal_current_version
