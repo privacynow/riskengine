@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const baseHost = (process.env.BASE_URL || "http://localhost:8000").replace(/\/$/, "");
+const screenshotMaxDiffPixelRatio = process.env.CI ? 0.04 : 0.02;
 
 export default defineConfig({
   testDir: "src/tests/e2e",
@@ -16,7 +17,10 @@ export default defineConfig({
   },
   expect: {
     toHaveScreenshot: {
-      maxDiffPixelRatio: 0.02,
+      // Local snapshots are often reviewed from macOS, while CI renders on Ubuntu.
+      // Keep structural layout assertions strict and allow a narrow pixel delta for
+      // cross-platform font metrics and antialiasing.
+      maxDiffPixelRatio: screenshotMaxDiffPixelRatio,
       animations: "disabled",
     },
   },
