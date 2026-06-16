@@ -896,3 +896,159 @@ class TestAdminHygiene:
                 cur.execute("DELETE FROM signal_log WHERE id = %s", (signal_log_id,))
                 cur.execute("DELETE FROM decision_log WHERE id = %s", (decision_id,))
                 conn.commit()
+
+    def test_create_signal_rejects_invalid_type(self, client):
+        resp = client.post(
+            "/ui/signals",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "tenant_id": SAMPLE_TENANT,
+                "name": f"invalid-type-{uuid.uuid4().hex[:8]}",
+                "type": "not_a_real_type",
+                "expression_body": "True",
+            },
+        )
+        assert resp.status_code == 422
+
+    def test_delete_current_checkpoint_returns_409(self, client):
+        resp = client.delete(
+            f"/ui/checkpoints/{SEED_ONBOARDING_CHECKPOINT}",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        )
+        assert resp.status_code == 409
+
+    def test_checkpoint_deactivate_and_reactivate_lifecycle(self, client):
+        created = client.post(
+            "/ui/checkpoints",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "tenant_id": SAMPLE_TENANT,
+                "name": f"authoring_e2e_cp_{uuid.uuid4().hex[:8]}",
+                "type": "onboarding",
+                "dsl_expression": "True",
+            },
+        )
+        assert created.status_code == 200
+        checkpoint_id = created.json()["id"]
+
+        promoted = client.post(
+            f"/ui/checkpoints/{checkpoint_id}/make_current",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={"promotionReason": "Authoring e2e promotion"},
+        )
+        assert promoted.status_code == 200
+
+        deactivated = client.post(
+            f"/ui/checkpoints/{checkpoint_id}/deactivate",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={"promotionReason": "Authoring e2e deactivate"},
+        )
+        assert deactivated.status_code == 200
+        assert deactivated.json()["action"] == "deactivated"
+
+        detail = client.get(
+            f"/ui/checkpoints/{checkpoint_id}",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        ).json()
+        assert detail["is_current_version"] is False
+
+        runtime = client.post(
+            "/decisions",
+            headers=auth_header(TEST_SAMPLE_TOKEN),
+            json={"checkpoint_name": detail["name"]},
+        )
+        assert runtime.status_code == 404
+
+        reactivated = client.post(
+            f"/ui/checkpoints/{checkpoint_id}/reactivate",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={"promotionReason": "Authoring e2e reactivate"},
+        )
+        assert reactivated.status_code == 200
+        assert reactivated.json()["action"] == "reactivated"
+
+        audit = client.get(
+            f"/ui/promotion_audit?tenant_id={SAMPLE_TENANT}&q={detail['name']}&page=1&size=10",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        ).json()["items"]
+        actions = {row["action"] for row in audit}
+        assert {"promote", "deactivate", "reactivate"}.issubset(actions)
+
+    def test_authoring_expression_signal_checkpoint_and_test_lab(self, client):
+        signal_name = f"authoring_e2e_signal_{uuid.uuid4().hex[:8]}"
+        signal = client.post(
+            "/ui/signals",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "tenant_id": SAMPLE_TENANT,
+                "name": signal_name,
+                "type": "expression",
+                "expression_body": "request_score > 10",
+                "cost": 0,
+            },
+        )
+        assert signal.status_code == 200
+        signal_id = signal.json()["id"]
+
+        promoted_signal = client.post(
+            f"/ui/signals/{signal_id}/make_current",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={"promotionReason": "Authoring e2e signal promotion"},
+        )
+        assert promoted_signal.status_code == 200
+
+        checkpoint_name = f"authoring_e2e_cp_{uuid.uuid4().hex[:8]}"
+        checkpoint = client.post(
+            "/ui/checkpoints",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "tenant_id": SAMPLE_TENANT,
+                "name": checkpoint_name,
+                "type": "onboarding",
+                "dsl_expression": signal_name,
+                "signals": [signal_id],
+            },
+        )
+        assert checkpoint.status_code == 200
+        checkpoint_id = checkpoint.json()["id"]
+
+        promoted_cp = client.post(
+            f"/ui/checkpoints/{checkpoint_id}/make_current",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={"promotionReason": "Authoring e2e checkpoint promotion"},
+        )
+        assert promoted_cp.status_code == 200
+
+        lab = client.post(
+            "/ui/test_decisions",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "tenant_id": SAMPLE_TENANT,
+                "checkpoint_name": checkpoint_name,
+                "checkpoint_id": checkpoint_id,
+                "applicant_id": "authoring-e2e-applicant",
+                "parameters": {"request_score": 12},
+            },
+        )
+        assert lab.status_code == 200
+        assert lab.json()["signal_results"][signal_name] is True
+
+        runtime = client.post(
+            "/decisions",
+            headers=auth_header(TEST_SAMPLE_TOKEN),
+            json={
+                "checkpoint_name": checkpoint_name,
+                "applicant_id": "authoring-e2e-runtime",
+                "parameters": {"request_score": 12},
+            },
+        )
+        assert runtime.status_code == 200
+        assert runtime.json()["signal_results"][signal_name] is True
+
+    def test_pagination_size_is_bounded(self, client):
+        resp = client.get(
+            f"/ui/checkpoints?tenant_id={SAMPLE_TENANT}&page=1&size=500",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        )
+        assert resp.status_code == 200
+        assert resp.json()["size"] == 100

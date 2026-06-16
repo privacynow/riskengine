@@ -12,7 +12,7 @@ Checkpoints and signals are versioned rows. `checkpoint_current_version` and `si
 
 Runtime resolves linked signals by logical **name** through `signal_current_version`. Execution SQL deduplicates to one current row per signal name even if legacy association rows exist for multiple versions.
 
-Promotion is explicit and audited: `POST /ui/checkpoints/{id}/make_current` and `POST /ui/signals/{id}/make_current` require `promotionReason`, validate checkpoint DSL where applicable, update the current-version pointer, and append `promotion_audit`.
+Promotion is explicit and audited: `POST /ui/checkpoints/{id}/make_current`, `POST /ui/signals/{id}/make_current`, plus `deactivate` / `reactivate` endpoints. All require `promotionReason` and append `promotion_audit` with `action` (`promote`, `deactivate`, `reactivate`).
 
 ## DSL contract
 

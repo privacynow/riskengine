@@ -28,7 +28,18 @@ from ..services.promotion_audit import (
 )
 from ..services.admin_responses import admin_mutation
 from ..services.decision import execute_decision
-from ..services.pagination import build_paginated_response, paginate_query
+from ..services.pagination import build_paginated_response, clamp_pagination, paginate_query
+from ..services.resource_lifecycle import (
+    assert_not_current_checkpoint,
+    assert_not_current_signal,
+    deactivate_checkpoint,
+    deactivate_signal,
+    normalize_lifecycle_reason,
+    reactivate_checkpoint,
+    reactivate_signal,
+)
+from ..services.signal_log_search import search_signal_logs as search_signal_logs_service
+from ..services.signal_types import normalize_signal_type
 from ..services.security import (
     admin_signal_secret_fields,
     contains_embedded_credential,
@@ -38,7 +49,7 @@ from ..services.security import (
     resolve_bearer_token_for_persist,
 )
 from ..services.templates import extract_placeholders_from_text
-from ..types import UuidStr
+from ..types import OptionalUuidStr, UuidStr
 
 router = APIRouter(tags=["admin"], dependencies=[Depends(require_admin)])
 
@@ -50,6 +61,26 @@ def raise_admin_error(exc: Exception, *, context: str) -> None:
         raise exc
     logger.exception("%s", context)
     raise HTTPException(status_code=500, detail=GENERIC_ADMIN_ERROR) from exc
+
+def _get_signal_tenant_id(cur, signal_id: str) -> str:
+    cur.execute("SELECT tenant_id FROM signals WHERE id = %s", (signal_id,))
+    row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Signal not found.")
+    return str(row[0])
+
+
+def _assert_checkpoint_tenant(cur, checkpoint_id: str, tenant_id: str) -> None:
+    cur.execute("SELECT tenant_id FROM checkpoints WHERE id = %s", (checkpoint_id,))
+    row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Checkpoint not found.")
+    if str(row[0]) != tenant_id:
+        raise HTTPException(
+            status_code=422,
+            detail="Checkpoint does not belong to the requested tenant.",
+        )
+
 
 def _validate_signal_templates(payload: SignalCreateUpdate) -> None:
     checks = (
@@ -450,7 +481,8 @@ def create_signal(payload: SignalCreateUpdate):
     
     try:
         _validate_signal_templates(payload)
-        if payload.type == "expression" and payload.expression_body:
+        signal_type = normalize_signal_type(payload.type)
+        if signal_type == "expression" and payload.expression_body:
             result = validate_expression(
                 payload.expression_body,
                 [],
@@ -472,7 +504,7 @@ def create_signal(payload: SignalCreateUpdate):
             RETURNING id
         """, (
             payload.tenant_id, payload.name, payload.description,
-            payload.type, payload.method_of_call, payload.expression_body,
+            signal_type, payload.method_of_call, payload.expression_body,
             payload.cost, payload.cache_expiration_seconds, payload.timeout_seconds,
             payload.can_run_in_parallel, payload.order_of_evaluation,
             payload.http_method, payload.request_url_params_template,
@@ -524,7 +556,7 @@ def list_tenants(page: int = 1, size: int = 10):
         conn = get_db_connection()
         cur = conn.cursor()
         base_query = "SELECT id, name FROM tenants"
-        total, rows = paginate_query(cur, base_query, (), page, size)
+        total, rows, page, size = paginate_query(cur, base_query, (), page, size)
         items = []
         for r in rows:
             items.append({"id": str(r[0]), "name": r[1]})
@@ -597,7 +629,8 @@ def delete_tenant(tenant_id: UuidStr):
 
 
 @router.get("/ui/checkpoints")
-def list_checkpoints(tenant_id: Optional[str] = None, page: int = 1, size: int = 10, active_only: bool = False):
+def list_checkpoints(tenant_id: OptionalUuidStr = None, page: int = 1, size: int = 10, active_only: bool = False):
+    page, size = clamp_pagination(page, size)
     conn = get_db_connection()
     cur = conn.cursor()
 
@@ -773,6 +806,7 @@ def delete_checkpoint(checkpoint_id: UuidStr):
     try:
         conn = get_db_connection()
         cur = conn.cursor()
+        assert_not_current_checkpoint(cur, checkpoint_id)
         cur.execute("DELETE FROM checkpoints WHERE id = %s", (checkpoint_id,))
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="Checkpoint not found.")
@@ -784,20 +818,26 @@ def delete_checkpoint(checkpoint_id: UuidStr):
 
 
 @router.get("/ui/signals")
-def list_signals(checkpoint_id: Optional[str] = None,
-                 tenant_id: Optional[str] = None,
-                 page: int = 1,
-                 size: int = 10,
-                 active_only: bool = False):
+def list_signals(
+    checkpoint_id: OptionalUuidStr = None,
+    tenant_id: OptionalUuidStr = None,
+    page: int = 1,
+    size: int = 10,
+    active_only: bool = False,
+):
     """
     If checkpoint_id is provided, returns signals associated with that checkpoint.
     If tenant_id is provided, returns signals for that tenant.
     Otherwise returns all signals.
     """
+    page, size = clamp_pagination(page, size)
     conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
+
+        if checkpoint_id and tenant_id:
+            _assert_checkpoint_tenant(cur, checkpoint_id, tenant_id)
 
         if checkpoint_id:
             base_query = """
@@ -856,7 +896,7 @@ def list_signals(checkpoint_id: Optional[str] = None,
 
         base_query += " ORDER BY s.name ASC, s.id ASC"
 
-        total, rows = paginate_query(cur, base_query, params, page, size)
+        total, rows, page, size = paginate_query(cur, base_query, params, page, size)
         items = [_admin_signal_item_from_row(r, include_current=True) for r in rows]
 
         return build_paginated_response(items, total, page, size)
@@ -943,6 +983,7 @@ def delete_signal(signal_id: UuidStr):
     try:
         conn = get_db_connection()
         cur = conn.cursor()
+        assert_not_current_signal(cur, signal_id)
         cur.execute("DELETE FROM signals WHERE id = %s", (signal_id,))
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="Signal not found.")
@@ -961,6 +1002,7 @@ def create_variable_value(payload: VariableValueCreateUpdate):
         new_id = str(uuid.uuid4())
         conn = get_db_connection()
         cur = conn.cursor()
+        _get_signal_tenant_id(cur, payload.signal_id)
         cur.execute(
             """
             INSERT INTO signal_variable_values (id, signal_id, name, value)
@@ -1014,6 +1056,24 @@ def update_variable_value(variable_value_id: UuidStr, payload: VariableValueCrea
     try:
         conn = get_db_connection()
         cur = conn.cursor()
+        cur.execute(
+            "SELECT signal_id FROM signal_variable_values WHERE id = %s",
+            (variable_value_id,),
+        )
+        existing = cur.fetchone()
+        if not existing:
+            raise HTTPException(status_code=404, detail="Variable value not found.")
+        existing_signal_id = str(existing[0])
+        if existing_signal_id != payload.signal_id:
+            existing_tenant = _get_signal_tenant_id(cur, existing_signal_id)
+            new_tenant = _get_signal_tenant_id(cur, payload.signal_id)
+            if existing_tenant != new_tenant:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Variable value cannot move across tenants.",
+                )
+        else:
+            _get_signal_tenant_id(cur, payload.signal_id)
         cur.execute(
             """
             UPDATE signal_variable_values
@@ -1165,7 +1225,7 @@ def list_checkpoint_signals(
             params.append(signal_id)
         if where_parts:
             base_query += " WHERE " + " AND ".join(where_parts)
-        total, rows = paginate_query(cur, base_query, tuple(params), page, size)
+        total, rows, page, size = paginate_query(cur, base_query, tuple(params), page, size)
         items = []
         for r in rows:
             items.append(
@@ -1197,7 +1257,7 @@ def search_tenants(q: str, page: int = 1, size: int = 10):
                 OR id::text ILIKE %s
         """
         params = (like, like)
-        total, rows = paginate_query(cur, base_query, params, page, size)
+        total, rows, page, size = paginate_query(cur, base_query, params, page, size)
         items = [{"id": str(r[0]), "name": r[1]} for r in rows]
         return build_paginated_response(items, total, page, size)
     finally:
@@ -1245,7 +1305,7 @@ def search_checkpoints(
 
         base_query += " ORDER BY c.name ASC, c.id ASC"
 
-        total, rows = paginate_query(cur, base_query, params, page, size)
+        total, rows, page, size = paginate_query(cur, base_query, params, page, size)
         items = []
         for r in rows:
             items.append({
@@ -1301,7 +1361,7 @@ def search_signals(q: str, tenant_id: Optional[str] = None, page: int = 1, size:
 
         base_query += " ORDER BY s.name ASC, s.id ASC"
 
-        total, rows = paginate_query(cur, base_query, params, page, size)
+        total, rows, page, size = paginate_query(cur, base_query, params, page, size)
         items = [_admin_signal_item_from_row(r, include_current=True) for r in rows]
         return build_paginated_response(items, total, page, size)
     finally:
@@ -1372,7 +1432,7 @@ def search_decisions(
 
         base_query += " GROUP BY dl.id, c.name"
 
-        total, rows = paginate_query(cur, base_query, params, page, size)
+        total, rows, page, size = paginate_query(cur, base_query, params, page, size)
         items = []
         for r in rows:
             items.append(
@@ -1397,184 +1457,28 @@ def search_decisions(
 @router.get("/ui/search_signal_logs")
 def search_signal_logs(
     q: Optional[str] = None,
-    tenant_id: Optional[str] = None,
+    tenant_id: OptionalUuidStr = None,
     failures_only: bool = False,
+    param_name: Optional[str] = None,
+    param_value: Optional[str] = None,
     page: int = 1,
     size: int = 10,
 ):
-    """
-    Searches signal_log by partial match in signal_id, applicant_id,
-    decision_log_id, signal_value, cost_incurred, success, or id.
-    Also includes param_values from signal_log_values.
-    """
+    """Search signal logs with SQL-level pagination."""
     conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-
-        # Step 1: count how many overall signal_log rows match
-        base_count_query = """
-            SELECT COUNT(DISTINCT sl.id)
-              FROM signal_log sl
-         LEFT JOIN signals sig ON sig.id = sl.signal_id
-         LEFT JOIN decision_log dl ON dl.id = sl.decision_log_id
-             WHERE 1=1
-        """
-        count_conditions = []
-        count_params = []
-
-        if q:
-            like = f"%{q}%"
-            count_conditions.append(
-                """
-                (
-                  sl.signal_id::text ILIKE %s
-                  OR sl.applicant_id ILIKE %s
-                  OR sl.decision_log_id::text ILIKE %s
-                  OR sl.signal_value ILIKE %s
-                  OR CAST(sl.cost_incurred AS text) ILIKE %s
-                  OR CAST(sl.success AS text) ILIKE %s
-                  OR sl.id::text ILIKE %s
-                  OR sig.name ILIKE %s
-                )
-                """
-            )
-            count_params.extend([like, like, like, like, like, like, like, like])
-
-        if tenant_id:
-            count_conditions.append("dl.tenant_id = %s")
-            count_params.append(tenant_id)
-
-        if failures_only:
-            count_conditions.append("sl.success = false")
-
-        if count_conditions:
-            base_count_query += " AND " + " AND ".join(count_conditions)
-
-        cur.execute(base_count_query, count_params)
-        total = cur.fetchone()[0]
-
-        # Step 2: fetch actual rows (with left join to signal_log_values)
-        base_data_query = """
-            SELECT sl.id,
-                   sl.decision_log_id,
-                   sl.signal_id,
-                   sl.applicant_id,
-                   sl.signal_value,
-                   sl.started_at,
-                   sl.completed_at,
-                   sl.cost_incurred,
-                   sl.success,
-                   slv.param_name,
-                   slv.param_value,
-                   sig.name AS signal_name
-              FROM signal_log sl
-         LEFT JOIN signals sig ON sig.id = sl.signal_id
-         LEFT JOIN decision_log dl ON dl.id = sl.decision_log_id
-         LEFT JOIN signal_log_values slv
-                ON sl.id = slv.signal_log_id
-             WHERE 1=1
-        """
-        data_conditions = []
-        data_params = []
-
-        if q:
-            like = f"%{q}%"
-            data_conditions.append(
-                """
-                (
-                  sl.signal_id::text ILIKE %s
-                  OR sl.applicant_id ILIKE %s
-                  OR sl.decision_log_id::text ILIKE %s
-                  OR sl.signal_value ILIKE %s
-                  OR CAST(sl.cost_incurred AS text) ILIKE %s
-                  OR CAST(sl.success AS text) ILIKE %s
-                  OR sl.id::text ILIKE %s
-                  OR slv.param_name ILIKE %s
-                  OR slv.param_value ILIKE %s
-                  OR sig.name ILIKE %s
-                )
-                """
-            )
-            data_params.extend([like, like, like, like, like, like, like, like, like, like])
-
-        if tenant_id:
-            data_conditions.append("dl.tenant_id = %s")
-            data_params.append(tenant_id)
-
-        if failures_only:
-            data_conditions.append("sl.success = false")
-
-        if data_conditions:
-            base_data_query += " AND " + " AND ".join(data_conditions)
-
-        base_data_query += " ORDER BY sl.started_at DESC"
-
-        cur.execute(base_data_query, data_params)
-        joined_rows = cur.fetchall()
-
-        from collections import defaultdict
-        log_map = defaultdict(lambda: {
-            "id": None,
-            "decision_log_id": None,
-            "signal_id": None,
-            "signal_name": None,
-            "applicant_id": None,
-            "signal_value": None,
-            "started_at": None,
-            "completed_at": None,
-            "cost_incurred": None,
-            "success": None,
-            "param_values": []
-        })
-
-        for row in joined_rows:
-            sl_id = str(row[0])
-            if log_map[sl_id]["id"] is None:
-                log_map[sl_id]["id"] = sl_id
-                log_map[sl_id]["decision_log_id"] = str(row[1])
-                log_map[sl_id]["signal_id"] = str(row[2])
-                log_map[sl_id]["applicant_id"] = row[3]
-                log_map[sl_id]["signal_value"] = row[4]
-                log_map[sl_id]["started_at"] = row[5].isoformat() if row[5] else None
-                log_map[sl_id]["completed_at"] = row[6].isoformat() if row[6] else None
-                log_map[sl_id]["cost_incurred"] = row[7]
-                log_map[sl_id]["success"] = row[8]
-                log_map[sl_id]["signal_name"] = row[11]
-
-            param_name = row[9]
-            param_val = row[10]
-            if param_name is not None:
-                log_map[sl_id]["param_values"].append({
-                    "param_name": param_name,
-                    "param_value": param_val
-                })
-
-        all_logs = list(log_map.values())
-        for log in all_logs:
-            raw_map = {
-                item["param_name"]: item["param_value"]
-                for item in log["param_values"]
-                if item.get("param_name") is not None
-            }
-            redacted_map = redact_param_map_for_response(raw_map)
-            log["param_values"] = [
-                {"param_name": name, "param_value": value}
-                for name, value in redacted_map.items()
-            ]
-
-        # Apply pagination in memory
-        start_index = (page - 1) * size
-        end_index = start_index + size
-        paginated_logs = all_logs[start_index:end_index]
-
-        return {
-            "items": paginated_logs,
-            "total": total,
-            "page": page,
-            "size": size
-        }
-
+        return search_signal_logs_service(
+            cur,
+            q=q,
+            tenant_id=tenant_id,
+            failures_only=failures_only,
+            param_name=param_name,
+            param_value=param_value,
+            page=page,
+            size=size,
+        )
     finally:
         if conn:
             conn.close()
@@ -1593,7 +1497,7 @@ def search_promotion_audit(
         cur = conn.cursor()
         base_query = """
             SELECT id, tenant_id, resource_type, resource_id, resource_name,
-                   actor_id, promotion_reason, source, created_at
+                   actor_id, promotion_reason, action, source, created_at
               FROM promotion_audit
              WHERE 1=1
         """
@@ -1614,7 +1518,7 @@ def search_promotion_audit(
             params.extend([like, like, like, like])
         base_query += " ORDER BY created_at DESC, id ASC"
 
-        total, rows = paginate_query(cur, base_query, params, page, size)
+        total, rows, page, size = paginate_query(cur, base_query, params, page, size)
         items = [_promotion_audit_row_to_item(row) for row in rows]
         return build_paginated_response(items, total, page, size)
     finally:
@@ -1631,8 +1535,9 @@ def _promotion_audit_row_to_item(row) -> dict:
         "resource_name": row[4],
         "actor_id": row[5],
         "promotion_reason": row[6],
-        "source": row[7],
-        "created_at": row[8].isoformat() if row[8] else None,
+        "action": row[7],
+        "source": row[8],
+        "created_at": row[9].isoformat() if row[9] else None,
     }
 
 
@@ -1645,7 +1550,7 @@ def get_promotion_audit(promotion_id: UuidStr, tenant_id: Optional[str] = None):
         cur.execute(
             """
             SELECT id, tenant_id, resource_type, resource_id, resource_name,
-                   actor_id, promotion_reason, source, created_at
+                   actor_id, promotion_reason, action, source, created_at
               FROM promotion_audit
              WHERE id = %s
             """,
@@ -1729,6 +1634,7 @@ def make_checkpoint_current(
             resource_name=checkpoint_name,
             actor_id=auth.actor_id,
             promotion_reason=promotion_reason,
+            action="promote",
         )
         
         conn.commit()
@@ -1780,6 +1686,7 @@ def make_signal_current(
             resource_name=signal_name,
             actor_id=auth.actor_id,
             promotion_reason=promotion_reason,
+            action="promote",
         )
         
         conn.commit()
@@ -1788,4 +1695,109 @@ def make_signal_current(
         conn.rollback()
         raise_admin_error(e, context="make_signal_current failed")
     finally:
+        cur.close()
+        conn.close()
+
+
+@router.post("/ui/checkpoints/{checkpoint_id}/deactivate")
+def deactivate_checkpoint_version(
+    checkpoint_id: UuidStr,
+    payload: PromotionRequest,
+    auth: AuthContext = Depends(require_admin),
+):
+    reason = normalize_lifecycle_reason(payload.promotion_reason)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        deactivate_checkpoint(
+            cur,
+            checkpoint_id=checkpoint_id,
+            actor_id=auth.actor_id,
+            promotion_reason=reason,
+        )
+        conn.commit()
+        return admin_mutation("deactivated", checkpoint_id)
+    except Exception as e:
+        conn.rollback()
+        raise_admin_error(e, context="deactivate_checkpoint failed")
+    finally:
+        cur.close()
+        conn.close()
+
+
+@router.post("/ui/checkpoints/{checkpoint_id}/reactivate")
+def reactivate_checkpoint_version(
+    checkpoint_id: UuidStr,
+    payload: PromotionRequest,
+    auth: AuthContext = Depends(require_admin),
+):
+    reason = normalize_lifecycle_reason(payload.promotion_reason)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        reactivate_checkpoint(
+            cur,
+            checkpoint_id=checkpoint_id,
+            actor_id=auth.actor_id,
+            promotion_reason=reason,
+        )
+        conn.commit()
+        return admin_mutation("reactivated", checkpoint_id)
+    except Exception as e:
+        conn.rollback()
+        raise_admin_error(e, context="reactivate_checkpoint failed")
+    finally:
+        cur.close()
+        conn.close()
+
+
+@router.post("/ui/signals/{signal_id}/deactivate")
+def deactivate_signal_version(
+    signal_id: UuidStr,
+    payload: PromotionRequest,
+    auth: AuthContext = Depends(require_admin),
+):
+    reason = normalize_lifecycle_reason(payload.promotion_reason)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        deactivate_signal(
+            cur,
+            signal_id=signal_id,
+            actor_id=auth.actor_id,
+            promotion_reason=reason,
+        )
+        conn.commit()
+        return admin_mutation("deactivated", signal_id)
+    except Exception as e:
+        conn.rollback()
+        raise_admin_error(e, context="deactivate_signal failed")
+    finally:
+        cur.close()
+        conn.close()
+
+
+@router.post("/ui/signals/{signal_id}/reactivate")
+def reactivate_signal_version(
+    signal_id: UuidStr,
+    payload: PromotionRequest,
+    auth: AuthContext = Depends(require_admin),
+):
+    reason = normalize_lifecycle_reason(payload.promotion_reason)
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        reactivate_signal(
+            cur,
+            signal_id=signal_id,
+            actor_id=auth.actor_id,
+            promotion_reason=reason,
+        )
+        conn.commit()
+        return admin_mutation("reactivated", signal_id)
+    except Exception as e:
+        conn.rollback()
+        raise_admin_error(e, context="reactivate_signal failed")
+    finally:
+        cur.close()
         conn.close()

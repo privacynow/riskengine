@@ -76,7 +76,7 @@ ON CONFLICT (tenant_id, name) DO UPDATE
 
 INSERT INTO promotion_audit (
     id, tenant_id, resource_type, resource_id, resource_name,
-    actor_id, promotion_reason, source, created_at
+    actor_id, promotion_reason, action, source, created_at
 )
 SELECT
   'dddddddd-dddd-dddd-dddd-dddddddddddd',
@@ -86,6 +86,7 @@ SELECT
   'Fixture Flow',
   'visual-fixture',
   'Fixture promotion record',
+  'promote',
   'seed',
   TIMESTAMP '2020-01-01 00:00:00'
 WHERE NOT EXISTS (

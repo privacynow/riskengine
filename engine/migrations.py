@@ -26,6 +26,11 @@ CREATE INDEX IF NOT EXISTS promotion_audit_tenant_created_idx
     ON promotion_audit (tenant_id, created_at DESC);
 """
 
+_PROMOTION_AUDIT_ACTION_DDL = """
+ALTER TABLE promotion_audit
+    ADD COLUMN IF NOT EXISTS action VARCHAR(32) NOT NULL DEFAULT 'promote';
+"""
+
 _SIGNAL_LOG_ERROR_MESSAGE_DDL = """
 ALTER TABLE signal_log
     ADD COLUMN IF NOT EXISTS error_message TEXT;
@@ -37,6 +42,7 @@ def ensure_schema(max_attempts: int = 30, delay_seconds: float = 1.0) -> None:
         try:
             with db_cursor() as (conn, cur):
                 cur.execute(_PROMOTION_AUDIT_DDL)
+                cur.execute(_PROMOTION_AUDIT_ACTION_DDL)
                 cur.execute(_SIGNAL_LOG_ERROR_MESSAGE_DDL)
                 conn.commit()
             logger.info("Schema migration checks complete.")

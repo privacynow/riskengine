@@ -18,6 +18,7 @@ def _expression_signal(
     parallel: bool = False,
     timeout_seconds: int = 30,
     expression_body: str = "True",
+    cost: int = 1,
 ) -> ExecutableSignalRow:
     return ExecutableSignalRow(
         id=f"id-{name}",
@@ -25,7 +26,7 @@ def _expression_signal(
         type="expression",
         method_of_call=None,
         expression_body=expression_body,
-        cost=1,
+        cost=cost,
         cache_expiration_seconds=0,
         timeout_seconds=timeout_seconds,
         can_run_in_parallel=parallel,
@@ -222,3 +223,64 @@ class TestDecisionOrchestration:
             conn.close()
 
         assert started[:2] == ["start", "start"]
+
+    def test_cost_skip_writes_terminal_signal_audit(self, monkeypatch):
+        from engine.db import get_db_connection
+        from engine.services import decision as decision_mod
+
+        captured: list[dict] = []
+        original_put = decision_mod.log_queue.put
+
+        async def capture_put(item):
+            if item is not None:
+                captured.append(item)
+            return await original_put(item)
+
+        monkeypatch.setattr(decision_mod.log_queue, "put", capture_put)
+        monkeypatch.setattr(
+            decision_mod,
+            "fetch_executable_signal_rows",
+            lambda cur, tenant_id, checkpoint_id: [
+                _expression_signal("cheap_signal", cost=1),
+                _expression_signal("expensive_signal", cost=50, order=2),
+            ],
+        )
+
+        from engine.services.tenancy import CheckpointRow
+
+        monkeypatch.setattr(
+            decision_mod,
+            "fetch_checkpoint_row_by_id",
+            lambda cur, tenant_id, checkpoint_id: CheckpointRow(
+                id=checkpoint_id,
+                tenant_id=tenant_id,
+                name="cost-skip-test",
+                description=None,
+                type="onboarding",
+                dsl_expression="cheap_signal and expensive_signal",
+                method_of_call=None,
+                max_cost=1,
+                override_cost_flag=False,
+                timeout_seconds=30,
+            ),
+        )
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+        try:
+            asyncio.run(
+                execute_decision(
+                    conn,
+                    cur,
+                    SAMPLE_TENANT,
+                    DecisionRequest(checkpoint_name="cost-skip-test", applicant_id="app-1"),
+                    checkpoint_id=SAMPLE_ONBOARDING_CHECKPOINT,
+                )
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+        skipped = [item for item in captured if item.get("error_message") == "cost_budget_exceeded"]
+        assert skipped
+        assert skipped[0]["success"] is False

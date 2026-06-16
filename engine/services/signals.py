@@ -7,6 +7,7 @@ import httpx
 
 from ..db import db_cursor
 from .dsl import evaluate_expression
+from .signal_types import SIGNAL_TYPES
 from .security import validate_outbound_signal_url
 from .templates import parse_headers_string, parse_params_string, render_template
 
@@ -136,6 +137,11 @@ async def invoke_signal(
     signal_id: str,
     timeout_seconds: int = 30,
 ) -> Any:
+    if signal_type not in SIGNAL_TYPES:
+        raise ValueError(
+            f"Unknown signal type: {signal_type}. "
+            f"Allowed: {', '.join(sorted(SIGNAL_TYPES))}"
+        )
     if signal_type in ("internal_endpoint", "external_endpoint"):
         final_method = (http_method or "GET").upper()
         url = method_of_call or ""

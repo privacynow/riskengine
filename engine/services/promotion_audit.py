@@ -7,6 +7,7 @@ from typing import Literal
 from fastapi import HTTPException
 
 ResourceType = Literal["checkpoint", "signal"]
+PromotionAction = Literal["promote", "deactivate", "reactivate"]
 
 
 def normalize_promotion_reason(reason: str | None) -> str:
@@ -38,14 +39,15 @@ def record_promotion_audit(
     resource_name: str,
     actor_id: str,
     promotion_reason: str,
+    action: PromotionAction = "promote",
     source: str = "make_current",
 ) -> None:
     cur.execute(
         """
         INSERT INTO promotion_audit (
             tenant_id, resource_type, resource_id, resource_name,
-            actor_id, promotion_reason, source
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            actor_id, promotion_reason, action, source
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """,
         (
             tenant_id,
@@ -54,6 +56,7 @@ def record_promotion_audit(
             resource_name,
             actor_id,
             promotion_reason,
+            action,
             source,
         ),
     )

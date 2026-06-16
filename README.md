@@ -1,6 +1,14 @@
 # Decision Engine
 
-Multi-tenant checkpoint evaluation with configurable signals, DSL rules, audit logging, and a Vue admin workbench.
+Decision Engine helps teams define, run, test, and audit automated business decisions across tenants. It is built for policies that depend on reusable data signals, versioned rules, governed promotion, and traceable outcomes.
+
+## What It Does
+
+- Models business decisions as lifecycle checkpoints with linked signals and rule expressions.
+- Reuses signals across decisions: integrations, variables, expression-derived values, and local functions.
+- Runs decisions with tenant isolation, cost controls, timeouts, and audit logs.
+- Lets operators test drafts, promote versions with a reason, inspect decision traces, and review signal failures.
+- Audits promotion, deactivation, and reactivation; deleting a current checkpoint or signal version returns `409`.
 
 ## Quick Start
 
@@ -31,7 +39,7 @@ bash scripts/ui_smoke.sh
 
 ## Runtime Example
 
-Runtime tenancy comes from the bearer token. Do not send `tenant_id` or `tenant_name` in runtime requests.
+A runtime request evaluates a named lifecycle checkpoint under the tenant bound to the bearer token. Do not send `tenant_id` or `tenant_name` in runtime requests.
 
 ```sh
 source scripts/lib/read_env_var.sh
@@ -75,8 +83,8 @@ docker compose up -d --build
 
 | Path | Purpose |
 |------|---------|
-| `engine/` | FastAPI app, auth, routes, decision services |
-| `ui/` | Vue 3 admin workbench, built to `ui/dist/` |
+| `engine/` | Application service, auth, routes, decision orchestration |
+| `ui/` | Admin workbench, built to `ui/dist/` |
 | `sql/` | Postgres schema and sample seed data |
 | `scripts/` | Bootstrap, Docker, smoke, and UI test helpers |
 | `tests/` | Pytest integration and contract tests |
@@ -91,7 +99,7 @@ docker compose up -d --build
 | [Deployment](docs/DEPLOYMENT.md) | Docker deployment, environment variables, database initialization |
 | [Development](docs/DEVELOPMENT.md) | Local development, full test matrix, Playwright workflow |
 | [DSL guide](docs/DSL_GUIDE.md) | Authoring checkpoint DSL and expression signals |
-| [Admin UI](ui/README.md) | Frontend commands, source layout, UI test details |
+| [Admin UI](ui/README.md) | Admin workbench implementation and UI test details |
 
 ## Security Notes
 

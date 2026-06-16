@@ -168,6 +168,7 @@ CREATE TABLE IF NOT EXISTS promotion_audit (
     resource_name VARCHAR(255) NOT NULL,
     actor_id VARCHAR(255) NOT NULL,
     promotion_reason TEXT NOT NULL,
+    action VARCHAR(32) NOT NULL DEFAULT 'promote',
     source VARCHAR(64) NOT NULL DEFAULT 'make_current',
     created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW()
 );

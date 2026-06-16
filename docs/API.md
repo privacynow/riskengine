@@ -66,6 +66,15 @@ Admin path parameters and UUID fields in write models (`tenant_id`, `signals`, `
 
 ### Promotion audit
 
-`GET /ui/promotion_audit` (search) and `GET /ui/promotion_audit/{id}` (detail) expose governed version promotions.
+`GET /ui/promotion_audit` (search) and `GET /ui/promotion_audit/{id}` (detail) expose governed version lifecycle events (`action`: `promote`, `deactivate`, `reactivate`).
+
+Lifecycle endpoints (all require `promotionReason`):
+
+- `POST /ui/checkpoints/{id}/make_current` — promote checkpoint version
+- `POST /ui/checkpoints/{id}/deactivate` — remove current pointer (runtime 404 by name)
+- `POST /ui/checkpoints/{id}/reactivate` — restore current pointer with DSL validation
+- `POST /ui/signals/{id}/make_current` — promote signal version
+- `POST /ui/signals/{id}/deactivate` — remove current pointer (linked signals skip at runtime)
+- `POST /ui/signals/{id}/reactivate` — restore current pointer
 
 Hand-maintained OpenAPI YAML was removed to avoid drift; use `/docs` on a running instance as the source of truth.

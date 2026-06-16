@@ -76,4 +76,87 @@ def reset_integration_seed_state() -> None:
             """,
             (SAMPLE_TENANT,),
         )
+        _cleanup_test_artifacts(cur, SAMPLE_TENANT)
+        _cleanup_test_artifacts(cur, OTHER_TENANT)
         conn.commit()
+
+
+_TEST_CHECKPOINT_NAME_PATTERNS = (
+    "dup-assoc-guard-%",
+    "cross-tenant-link-%",
+    "promotion-%",
+    "mutation-envelope-test",
+    "cross-tenant-assoc-test",
+    "invalid-%",
+    "authoring_e2e_%",
+)
+
+_TEST_SIGNAL_NAME_PATTERNS = (
+    "foreign_%",
+    "authoring_e2e_%",
+)
+
+
+def _cleanup_test_artifacts(cur, tenant_id: str) -> None:
+    for pattern in _TEST_SIGNAL_NAME_PATTERNS:
+        cur.execute(
+            """
+            DELETE FROM checkpoint_signals
+             WHERE signal_id IN (
+                    SELECT id FROM signals
+                     WHERE tenant_id = %s
+                       AND name LIKE %s
+                       AND id NOT IN (
+                            SELECT signal_id FROM signal_current_version
+                             WHERE tenant_id = %s
+                       )
+               )
+            """,
+            (tenant_id, pattern, tenant_id),
+        )
+        cur.execute(
+            """
+            DELETE FROM signals
+             WHERE tenant_id = %s
+               AND name LIKE %s
+               AND id NOT IN (
+                    SELECT signal_id FROM signal_current_version
+                     WHERE tenant_id = %s
+               )
+               AND NOT EXISTS (
+                    SELECT 1 FROM signal_log sl WHERE sl.signal_id = signals.id
+               )
+            """,
+            (tenant_id, pattern, tenant_id),
+        )
+    for pattern in _TEST_CHECKPOINT_NAME_PATTERNS:
+        cur.execute(
+            """
+            DELETE FROM checkpoint_signals
+             WHERE checkpoint_id IN (
+                    SELECT id FROM checkpoints
+                     WHERE tenant_id = %s
+                       AND name LIKE %s
+                       AND id NOT IN (
+                            SELECT checkpoint_id FROM checkpoint_current_version
+                             WHERE tenant_id = %s
+                       )
+               )
+            """,
+            (tenant_id, pattern, tenant_id),
+        )
+        cur.execute(
+            """
+            DELETE FROM checkpoints
+             WHERE tenant_id = %s
+               AND name LIKE %s
+               AND id NOT IN (
+                    SELECT checkpoint_id FROM checkpoint_current_version
+                     WHERE tenant_id = %s
+               )
+               AND NOT EXISTS (
+                    SELECT 1 FROM decision_log dl WHERE dl.checkpoint_id = checkpoints.id
+               )
+            """,
+            (tenant_id, pattern, tenant_id),
+        )
