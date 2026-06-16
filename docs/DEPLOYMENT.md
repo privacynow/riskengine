@@ -15,7 +15,7 @@ bash scripts/ui_smoke.sh    # optional; requires Node.js and SMOKE_ADMIN_TOKEN i
 
 The `docker compose build` step compiles the admin UI (`ui/dist/`) in a Node build stage and copies it into the Python image. No Node.js is required on the host for a normal deploy.
 
-Expose port `8000` through your reverse proxy or security group. Do **not** publish the admin UI or APIs to the public internet without authentication (see [ROADMAP.md](ROADMAP.md)).
+Expose port `8000` through your reverse proxy or security group. Do **not** publish the admin UI or APIs to the public internet without authentication and the hardening described in [ARCHITECTURE.md](ARCHITECTURE.md) and the README production readiness section.
 
 `create_demo_env.sh` writes ignored `.env.local` and `auth.tokens.local.json`. Docker Compose loads them automatically.
 

@@ -37,17 +37,23 @@ import { formatEvalTimeout, formatFlowCostCap } from "@/api/formatters";
 import Icon from "@/components/primitives/Icon.vue";
 import StatusBadge from "@/components/workbench/StatusBadge.vue";
 
-const props = defineProps<{
-  checkpoint: Checkpoint;
-  selected?: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    checkpoint: Checkpoint;
+    selected?: boolean;
+    promotable?: boolean;
+  }>(),
+  { promotable: true }
+);
 
 defineEmits<{
   open: [];
   promote: [];
 }>();
 
-const showPromote = computed(() => !props.checkpoint.is_current_version);
+const showPromote = computed(
+  () => props.promotable && !props.checkpoint.is_current_version
+);
 
 const metaLine = computed(() => {
   const parts = [

@@ -1,5 +1,10 @@
 <template>
   <div class="associations-view">
+    <PageHeader
+      title="Relationships"
+      subtitle="Inspect and manage signal links across decision flows."
+    />
+
     <DataToolbar>
       <select v-model="mode" class="toolbar-select">
         <option value="checkpoint">By checkpoint</option>
@@ -188,6 +193,7 @@ import DataToolbar from "@/components/primitives/DataToolbar.vue";
 import ResourceTable from "@/components/primitives/ResourceTable.vue";
 import EmptyState from "@/components/primitives/EmptyState.vue";
 import AppPagination from "@/components/primitives/AppPagination.vue";
+import PageHeader from "@/components/workbench/PageHeader.vue";
 import { useAssociationStore } from "@/stores/associationStore";
 
 const store = useAssociationStore();

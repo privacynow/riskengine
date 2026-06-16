@@ -2,7 +2,7 @@
 
 Checkpoint `dsl_expression` values are evaluated with **SimpleEval** after the linked signals run. Configured signal names become variables in the expression, and the expression result becomes the final decision value.
 
-This document describes the **current runtime contract**. It intentionally does not list target-state features that are not implemented yet.
+This document describes the **current** runtime and authoring contract.
 
 ## Example
 
@@ -14,7 +14,7 @@ age_check and not blocklist_check and (kyc_score > 80)
 
 After signals run, their coerced values populate the DSL environment. The final result should typically be `True` or `False`.
 
-## Current allowed syntax
+## Allowed syntax (runtime)
 
 - **Logical:** `and`, `or`, `not`
 - **Comparison:** `==`, `!=`, `<`, `<=`, `>`, `>=`
@@ -25,12 +25,47 @@ After signals run, their coerced values populate the DSL environment. The final 
 - **Strings:** `'text'` or `"text"`
 - **Names:** linked signal names and supplied context variables that are valid Python-style identifiers
 
-## Current restrictions
+## Restrictions
 
-- **Function calls are not enabled.** The runtime clears the SimpleEval function map, so expressions such as `max(10, credit_score)` are rejected today.
+- **Function calls are not enabled.** The runtime clears the SimpleEval function map, so expressions such as `max(10, credit_score)` are rejected.
 - DSL names are identifiers, not template placeholders. Use `credit_score`, not `%credit_score%`.
 - Signal names used in DSL should be stable, snake_case identifiers. Names with spaces or punctuation are not valid DSL variables.
-- The runtime currently discovers invalid DSL at evaluation time; a dedicated validation endpoint is target-state work in [ROADMAP.md](ROADMAP.md).
+
+## Preflight validation
+
+Before save or promotion, the admin UI and API can validate DSL with:
+
+`POST /ui/dsl_preflight`
+
+Request body:
+
+```json
+{
+  "dsl_expression": "age_check and mystery_signal",
+  "signal_names": ["age_check", "blocklist_check"]
+}
+```
+
+Response:
+
+```json
+{
+  "ok": false,
+  "errors": ["Unknown signal identifiers: mystery_signal"],
+  "warnings": []
+}
+```
+
+Preflight behavior:
+
+- Rejects empty expressions.
+- Parses the expression with Python `ast` in `eval` mode and rejects syntax errors.
+- Allows boolean logic, comparisons, names, and constants only — no function calls, attribute access, subscripts, comprehensions, or arithmetic operators.
+- Treats unknown identifiers (names not in `signal_names`) as **errors**, not warnings.
+
+Preflight is stricter than runtime evaluation today: expressions with arithmetic may run in Test Lab or production but fail preflight until AST rules expand. Prefer boolean and comparison expressions for checkpoint decisions.
+
+Runtime evaluation applies SimpleEval with functions disabled. Preflight catches most authoring mistakes before a version is saved or promoted. Remaining runtime failures (for example type mismatches during evaluation) surface when a decision runs.
 
 ## More examples
 
@@ -73,5 +108,5 @@ identity_verified and age_check
 - Use parentheses for clarity: `(credit_score > 70) and (not blocklist_check)`.
 - Keep expressions short; prefer readable combinations over deep nesting.
 - Prefer expression signals for reusable sub-conditions, then combine their results in the checkpoint DSL.
-- Run the flow in **Test Lab** before promoting checkpoint versions.
-- Treat any DSL runtime error as a failed decision path until validation is implemented.
+- Run **DSL preflight** in the checkpoint editor and exercise the flow in **Test Lab** before promoting a version.
+- Treat DSL runtime errors during decision execution as a failed decision path until the expression is corrected.

@@ -11,6 +11,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from .audit import log_processor, log_queue
 from .auth import initialize_auth
 from .config import APP_TITLE, logger, validate_config
+from .migrations import ensure_schema
 from .demo.mocks import mock_service_response
 from .services.security import is_local_mock_client
 from .models import TenantSuppliedError
@@ -31,6 +32,7 @@ OPENAPI_SECURITY_SCHEME = {
 async def lifespan(app: FastAPI):
     validate_config()
     initialize_auth()
+    ensure_schema()
     task = asyncio.create_task(log_processor())
     logger.info("%s started.", APP_TITLE)
     yield

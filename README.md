@@ -11,16 +11,16 @@ Multi-tenant checkpoint evaluation: signals + DSL, audit logging, and a Vue admi
 | [`sql/`](sql/) | Postgres schema and idempotent demo seed ([`sql/README.md`](sql/README.md)) |
 | [`scripts/`](scripts/) | Demo env, smoke tests, Docker helpers |
 | [`tests/`](tests/) | Pytest (auth, tenancy, admin hygiene) |
-| [`docs/`](docs/) | Roadmap, workflows, API auth notes, deployment |
+| [`docs/`](docs/) | API, architecture, deployment, DSL authoring |
 | `Dockerfile`, `docker-compose.yml` | Container build and local stack |
 
-**Docs:** [Roadmap](docs/ROADMAP.md) · [UI workflows](docs/UI_WORKFLOWS.md) · [API auth](docs/API.md) · [Design notes](docs/DESIGN_NOTES.md)
+**Docs:** [API](docs/API.md) · [Architecture](docs/ARCHITECTURE.md) · [Deployment](docs/DEPLOYMENT.md) · [DSL guide](docs/DSL_GUIDE.md) · [UI developer guide](ui/README.md)
 
 ---
 
 ## System Overview
 
-**Decision Engine** is a multi-tenant prototype for configurable checkpoint evaluation. Checkpoints combine signals (HTTP calls, local functions, variables, expressions) and a DSL expression to produce a pass/fail outcome with audit logging.
+**Decision Engine** is a multi-tenant service for configurable checkpoint evaluation. Checkpoints combine signals (HTTP calls, local functions, variables, expressions) and a DSL expression to produce a pass/fail outcome with audit logging.
 
 1. Receives `POST /decisions` with a `checkpoint_name` (tenant comes from auth, not the request body).
 2. Loads the **current** checkpoint via `checkpoint_current_version`.
@@ -31,9 +31,9 @@ Multi-tenant checkpoint evaluation: signals + DSL, audit logging, and a Vue admi
 
 **Cost limits:** When `override_cost_flag` is false, same-order signals run sequentially and cumulative cost is checked before each signal. When `override_cost_flag` is true, same-order signals may run concurrently without cost gating.
 
-**Not yet implemented:** Per-signal HTTP timeouts beyond a fixed 5s client default, `can_run_in_parallel` enforcement, immutable config writes.
+**Not yet implemented:** Per-signal HTTP timeouts beyond a fixed 5s client default, `can_run_in_parallel` enforcement, immutable config writes on all admin paths.
 
-> **Status:** Working prototype. See [docs/ROADMAP.md](docs/ROADMAP.md) and [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md).
+See [Production readiness](#production-readiness) for deployment boundaries.
 
 ---
 
@@ -108,7 +108,7 @@ See [docs/API.md](docs/API.md) for token JSON shape.
 
 ## Admin UI and `/ui` API
 
-The admin console is a **Vue 3 + TypeScript + Vite** SPA with **Pinia** stores and **Vue Router**. Source: [`ui/`](ui/). Architecture: [`docs/UI_REDESIGN.md`](docs/UI_REDESIGN.md). Operator workflows: [`docs/UI_WORKFLOWS.md`](docs/UI_WORKFLOWS.md). Frontend developer guide: [`ui/README.md`](ui/README.md).
+The admin console is a **Vue 3 + TypeScript + Vite** SPA with **Pinia** stores and **Vue Router**. Source: [`ui/`](ui/). Architecture summary: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Frontend developer guide: [`ui/README.md`](ui/README.md).
 
 | Item | Detail |
 |------|--------|
@@ -219,9 +219,17 @@ For UI-only work: `cd ui && npm run dev` (Vite on its own port; API must still r
 
 ---
 
-## Roadmap
+## Production readiness
 
-See [docs/ROADMAP.md](docs/ROADMAP.md).
+This repository is suitable for local development, integration testing, and controlled demos. Before production use, plan for:
+
+- **Identity and secrets** — Replace bearer-token maps with your organization's auth system; store connector credentials in a secret manager with encryption at rest.
+- **Network exposure** — Terminate TLS at the edge; do not publish `/admin/` or runtime APIs without authentication and access controls.
+- **Outbound safety** — URL checks block obvious private IPs and metadata hosts only; add SSRF controls and egress policy for your environment.
+- **Operational hardening** — Per-signal timeouts, parallel execution policy, and full immutable config writes are not complete on every admin path.
+- **Observability** — Wire decision and signal logs into your monitoring, alerting, and retention stack.
+
+Architecture and security tradeoffs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Deployment patterns: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ---
 

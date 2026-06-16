@@ -5,6 +5,7 @@ import type {
   DecisionTestPayload,
   DecisionTestResponse,
   Paginated,
+  PromotionAuditSummary,
   SignalLogSummary,
 } from "@/api/types";
 
@@ -33,6 +34,17 @@ export const auditApi = {
   searchSignalLogs(params: Record<string, string | number | boolean | undefined>) {
     return httpJson<Paginated<SignalLogSummary>>(
       `/ui/search_signal_logs${buildQuery(params)}`
+    );
+  },
+  searchPromotions(params: Record<string, string | number | boolean | undefined>) {
+    return httpJson<Paginated<PromotionAuditSummary>>(
+      `/ui/promotion_audit${buildQuery(params)}`
+    );
+  },
+  getPromotion(id: string, tenantId?: string) {
+    const params = tenantId ? { tenant_id: tenantId } : undefined;
+    return httpJson<PromotionAuditSummary>(
+      `/ui/promotion_audit/${encodeURIComponent(id)}${buildQuery(params ?? {})}`
     );
   },
 };

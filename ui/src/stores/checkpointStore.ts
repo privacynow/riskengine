@@ -14,6 +14,7 @@ import {
 import { useAuthStore } from "@/stores/authStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useConfirmDialog } from "@/composables/useConfirmDialog";
+import { usePromoteDialog } from "@/composables/usePromoteDialog";
 
 export const useCheckpointStore = defineStore("checkpoint", {
   state: () => ({
@@ -205,7 +206,6 @@ export const useCheckpointStore = defineStore("checkpoint", {
         max_cost: draft.max_cost,
         override_cost_flag: draft.override_cost_flag,
         timeout_seconds: draft.timeout_seconds,
-        makeCurrentVersion: draft.makeCurrentVersion,
         signals: draft.associatedSignals.map((s) => s.id),
       };
     },
@@ -221,7 +221,6 @@ export const useCheckpointStore = defineStore("checkpoint", {
         max_cost: draft.max_cost,
         override_cost_flag: draft.override_cost_flag,
         timeout_seconds: draft.timeout_seconds,
-        makeCurrentVersion: draft.makeCurrentVersion,
       };
     },
 
@@ -343,11 +342,16 @@ export const useCheckpointStore = defineStore("checkpoint", {
     async setCurrentVersion(checkpointId: string) {
       const cp = this.items.find((c) => c.id === checkpointId);
       if (!cp) return;
+      const { promote } = usePromoteDialog();
+      const reason = await promote({
+        title: "Promote flow version",
+        message: `Promote "${cp.name}" to the live current version for this tenant.`,
+        confirmLabel: "Promote",
+      });
+      if (!reason) return;
       try {
         await checkpointsApi.makeCurrent(checkpointId, {
-          tenant_id: cp.tenant_id,
-          name: cp.name,
-          checkpoint_id: checkpointId,
+          promotionReason: reason,
         });
         await this.loadAll(this.page);
         useUiStore().notify("Current checkpoint version updated.");

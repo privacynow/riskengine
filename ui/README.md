@@ -2,7 +2,7 @@
 
 Vue 3 + TypeScript + Vite + Pinia + Vue Router. Built to `dist/` and served by FastAPI at `/admin/`.
 
-Repo-level overview: [../README.md](../README.md). Architecture: [../docs/UI_REDESIGN.md](../docs/UI_REDESIGN.md). Operator workflows: [../docs/UI_WORKFLOWS.md](../docs/UI_WORKFLOWS.md).
+Repo-level overview: [../README.md](../README.md). Service architecture: [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md). DSL authoring: [../docs/DSL_GUIDE.md](../docs/DSL_GUIDE.md).
 
 ## Commands
 

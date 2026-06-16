@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 
 export const AUTH_KEY = "decisionEngineAdminToken";
+export const VISUAL_FIXTURE_TENANT = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 
 export function requireAdminToken(): string {
   const token = process.env.SMOKE_ADMIN_TOKEN ?? "";
@@ -42,7 +43,7 @@ export async function navigateSidebar(page: Page, label: string): Promise<void> 
   if (viewport && viewport.width <= 768) {
     await openMobileNav(page);
   }
-  await page.getByRole("link", { name: label, exact: true }).click();
+  await page.locator(".sidebar-nav").getByRole("link", { name: label, exact: true }).click();
 }
 
 export async function assertNoHorizontalOverflow(page: Page): Promise<void> {
@@ -56,4 +57,8 @@ export async function assertNoHorizontalOverflow(page: Page): Promise<void> {
 export async function selectTenant(page: Page, tenantId: string): Promise<void> {
   await page.selectOption("#tenant-select", tenantId);
   await page.waitForURL((url) => url.searchParams.get("tenant") === tenantId);
+}
+
+export async function selectVisualFixtureTenant(page: Page): Promise<void> {
+  await selectTenant(page, VISUAL_FIXTURE_TENANT);
 }

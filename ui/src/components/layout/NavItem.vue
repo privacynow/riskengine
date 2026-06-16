@@ -34,7 +34,7 @@ const DETAIL_ROUTE_GROUPS: Record<string, string[]> = {
   checkpoints: ["checkpoints", "checkpoint-detail"],
   signals: ["signals", "signal-detail"],
   tenants: ["tenants", "tenant-detail"],
-  "audit-decisions": ["audit-decisions", "audit-signal-logs"],
+  "audit-decisions": ["audit-decisions", "audit-signal-logs", "audit-promotions"],
 };
 
 const isActive = computed(() => {

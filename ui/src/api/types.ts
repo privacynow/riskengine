@@ -178,10 +178,22 @@ export type SignalDraft = {
   allow_caching: boolean;
   global_reuse: boolean;
   function_params_template: string;
-  makeCurrentVersion: boolean;
+};
+
+export type PromotionAuditSummary = {
+  id: string;
+  tenant_id: string;
+  resource_type: "checkpoint" | "signal" | string;
+  resource_id: string;
+  resource_name: string;
+  actor_id: string;
+  promotion_reason: string;
+  source?: string;
+  created_at?: string;
 };
 
 export type CheckpointDraft = {
+  id?: string;
   name: string;
   description: string;
   type: string;
@@ -190,7 +202,6 @@ export type CheckpointDraft = {
   max_cost: number;
   override_cost_flag: boolean;
   timeout_seconds: number;
-  makeCurrentVersion: boolean;
   signalSearch: string;
   signalSearchResults: Signal[];
   associatedSignals: Signal[];
@@ -219,7 +230,6 @@ export function emptySignalDraft(): SignalDraft {
     allow_caching: false,
     global_reuse: false,
     function_params_template: "",
-    makeCurrentVersion: false,
   };
 }
 
@@ -233,7 +243,6 @@ export function emptyCheckpointDraft(): CheckpointDraft {
     max_cost: 0,
     override_cost_flag: false,
     timeout_seconds: 30,
-    makeCurrentVersion: false,
     signalSearch: "",
     signalSearchResults: [],
     associatedSignals: [],
@@ -263,13 +272,13 @@ export function signalToDraft(signal: Signal): SignalDraft {
     allow_caching: signal.allow_caching ?? false,
     global_reuse: signal.global_reuse ?? false,
     function_params_template: signal.function_params_template || "",
-    makeCurrentVersion: false,
   };
 }
 
 export function checkpointToDraft(checkpoint: Checkpoint): CheckpointDraft {
   return {
     ...emptyCheckpointDraft(),
+    id: checkpoint.id,
     name: checkpoint.name,
     description: checkpoint.description || "",
     type: checkpoint.type || "",

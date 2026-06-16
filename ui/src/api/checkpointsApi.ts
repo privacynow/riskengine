@@ -35,7 +35,7 @@ export const checkpointsApi = {
       body: JSON.stringify(payload),
     });
   },
-  makeCurrent(id: string, payload: Record<string, unknown>) {
+  makeCurrent(id: string, payload: { promotionReason: string }) {
     return httpJson<unknown>(`/ui/checkpoints/${id}/make_current`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

@@ -27,8 +27,187 @@ class TestAdminHygiene:
         resp = client.post(
             "/ui/checkpoints/00000000-0000-0000-0000-000000000000/make_current",
             headers=auth_header(TEST_ADMIN_TOKEN),
+            json={"promotionReason": "Regression test promotion"},
         )
         assert resp.status_code == 404
+
+    def test_make_current_requires_promotion_reason(self, client):
+        listed = client.get(
+            f"/ui/checkpoints?tenant_id={SAMPLE_TENANT}&page=1&size=50",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        ).json()["items"]
+        target = next(item for item in listed if item["name"] == "Onboarding")
+
+        missing = client.post(
+            f"/ui/checkpoints/{target['id']}/make_current",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        )
+        assert missing.status_code == 422
+
+        empty = client.post(
+            f"/ui/checkpoints/{target['id']}/make_current",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={"promotionReason": "  "},
+        )
+        assert empty.status_code == 422
+
+        short = client.post(
+            f"/ui/checkpoints/{target['id']}/make_current",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={"promotionReason": "no"},
+        )
+        assert short.status_code == 422
+
+    def test_make_current_persists_promotion_audit(self, client):
+        created = client.post(
+            "/ui/checkpoints",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "tenant_id": SAMPLE_TENANT,
+                "name": "promotion-audit-test",
+                "type": "onboarding",
+                "dsl_expression": "True",
+            },
+        )
+        assert created.status_code == 200
+        checkpoint_id = created.json()["id"]
+        reason = "Promote for audit persistence test"
+
+        promoted = client.post(
+            f"/ui/checkpoints/{checkpoint_id}/make_current",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={"promotionReason": reason},
+        )
+        assert promoted.status_code == 200
+
+        from engine.db import db_cursor
+
+        with db_cursor() as (_, cur):
+            cur.execute(
+                """
+                SELECT resource_type, resource_id::text, resource_name, promotion_reason
+                  FROM promotion_audit
+                 WHERE resource_id = %s
+                 ORDER BY created_at DESC
+                 LIMIT 1
+                """,
+                (checkpoint_id,),
+            )
+            row = cur.fetchone()
+        assert row is not None
+        assert row[0] == "checkpoint"
+        assert row[1] == checkpoint_id
+        assert row[2] == "promotion-audit-test"
+        assert row[3] == reason
+
+    def test_signal_make_current_requires_promotion_reason(self, client):
+        listed = client.get(
+            f"/ui/signals?tenant_id={SAMPLE_TENANT}&page=1&size=50",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        ).json()["items"]
+        target = next(item for item in listed if item["name"] == "age_check")
+
+        missing = client.post(
+            f"/ui/signals/{target['id']}/make_current",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        )
+        assert missing.status_code == 422
+
+    def test_create_checkpoint_rejects_unknown_write_fields(self, client):
+        resp = client.post(
+            "/ui/checkpoints",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "tenant_id": SAMPLE_TENANT,
+                "name": "save-time-promote-blocked",
+                "type": "onboarding",
+                "dsl_expression": "True",
+                "makeCurrentVersion": True,
+            },
+        )
+        assert resp.status_code == 422
+
+    def test_dsl_preflight_rejects_unknown_identifiers(self, client):
+        resp = client.post(
+            "/ui/dsl_preflight",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "dsl_expression": "age_check and mystery_signal",
+                "signal_names": ["age_check"],
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ok"] is False
+        assert any("mystery_signal" in err for err in body["errors"])
+
+    def test_search_promotion_audit_filters_by_tenant(self, client):
+        created = client.post(
+            "/ui/checkpoints",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "tenant_id": SAMPLE_TENANT,
+                "name": "promotion-search-test",
+                "type": "onboarding",
+                "dsl_expression": "True",
+            },
+        )
+        checkpoint_id = created.json()["id"]
+        client.post(
+            f"/ui/checkpoints/{checkpoint_id}/make_current",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={"promotionReason": "Search surface integration test"},
+        )
+
+        resp = client.get(
+            f"/ui/promotion_audit?tenant_id={SAMPLE_TENANT}&q=promotion-search-test&page=1&size=10",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        )
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert items
+        assert items[0]["resource_name"] == "promotion-search-test"
+        assert items[0]["promotion_reason"] == "Search surface integration test"
+
+    def test_get_promotion_audit_by_id(self, client):
+        created = client.post(
+            "/ui/checkpoints",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "tenant_id": SAMPLE_TENANT,
+                "name": "promotion-detail-test",
+                "type": "onboarding",
+                "dsl_expression": "True",
+            },
+        )
+        checkpoint_id = created.json()["id"]
+        client.post(
+            f"/ui/checkpoints/{checkpoint_id}/make_current",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={"promotionReason": "Detail fetch integration test"},
+        )
+
+        listed = client.get(
+            f"/ui/promotion_audit?tenant_id={SAMPLE_TENANT}&q=promotion-detail-test&page=1&size=1",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        )
+        promotion_id = listed.json()["items"][0]["id"]
+
+        detail = client.get(
+            f"/ui/promotion_audit/{promotion_id}?tenant_id={SAMPLE_TENANT}",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        )
+        assert detail.status_code == 200
+        body = detail.json()
+        assert body["id"] == promotion_id
+        assert body["resource_name"] == "promotion-detail-test"
+        assert body["promotion_reason"] == "Detail fetch integration test"
+
+        missing = client.get(
+            f"/ui/promotion_audit/{promotion_id}?tenant_id={OTHER_TENANT}",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        )
+        assert missing.status_code == 404
 
     def test_runtime_checkpoint_omits_template_fields(self, client):
         resp = client.get(
@@ -103,15 +282,15 @@ class TestAdminHygiene:
         assert detail["is_current_version"] is True
 
     def test_admin_test_decision_checkpoint_id_runs_selected_version(self, client):
+        fork_name = "admin-version-fork-test"
         stale = client.post(
             "/ui/checkpoints",
             headers=auth_header(TEST_ADMIN_TOKEN),
             json={
                 "tenant_id": SAMPLE_TENANT,
-                "name": "Onboarding",
+                "name": fork_name,
                 "type": "onboarding",
                 "dsl_expression": "False",
-                "makeCurrentVersion": False,
             },
         )
         assert stale.status_code == 200
@@ -134,7 +313,7 @@ class TestAdminHygiene:
             headers=auth_header(TEST_ADMIN_TOKEN),
             json={
                 "tenant_id": SAMPLE_TENANT,
-                "checkpoint_name": "Onboarding",
+                "checkpoint_name": fork_name,
                 "checkpoint_id": stale_id,
                 "correlation_id": "admin-test-by-id",
             },
@@ -172,10 +351,31 @@ class TestAdminHygiene:
             if item.get("signal_name"):
                 assert isinstance(item["signal_name"], str)
 
+    def test_dsl_preflight_endpoint(self, client):
+        ok = client.post(
+            "/ui/dsl_preflight",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "dsl_expression": "age_check and kyc_score > 80",
+                "signal_names": ["age_check", "kyc_score"],
+            },
+        )
+        assert ok.status_code == 200
+        assert ok.json()["ok"] is True
+
+        bad = client.post(
+            "/ui/dsl_preflight",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={"dsl_expression": "age_check and (", "signal_names": ["age_check"]},
+        )
+        assert bad.status_code == 200
+        assert bad.json()["ok"] is False
+
     def test_admin_mutation_response_envelope(self, client):
         resp = client.post(
             "/ui/checkpoints/00000000-0000-0000-0000-000000000000/make_current",
             headers=auth_header(TEST_ADMIN_TOKEN),
+            json={"promotionReason": "Envelope test promotion"},
         )
         assert resp.status_code == 404
 
@@ -187,7 +387,6 @@ class TestAdminHygiene:
                 "name": "mutation-envelope-test",
                 "type": "onboarding",
                 "dsl_expression": "True",
-                "makeCurrentVersion": False,
             },
         )
         assert created.status_code == 200
@@ -199,6 +398,7 @@ class TestAdminHygiene:
         promoted = client.post(
             f"/ui/checkpoints/{body['id']}/make_current",
             headers=auth_header(TEST_ADMIN_TOKEN),
+            json={"promotionReason": "Mutation envelope promotion"},
         )
         assert promoted.status_code == 200
         promoted_body = promoted.json()

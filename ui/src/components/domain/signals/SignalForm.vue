@@ -113,16 +113,11 @@
       </div>
     </FormSection>
 
-    <FormSection v-if="!createNew" title="Versioning">
+    <FormSection v-if="!createNew" title="Versioning & promotion" subtitle="Promotion requires an audited reason">
       <p class="field-hint">
-        Saving creates a new signal version. Use “Make current” on the list to promote after save.
+        Saving creates a new signal version. Promote from the signal list with a required reason —
+        promotion is enforced server-side and recorded in the audit log.
       </p>
-      <div class="form-field checkbox-field">
-        <label>
-          <input v-model="local.makeCurrentVersion" type="checkbox" />
-          Make current version on save
-        </label>
-      </div>
     </FormSection>
 
     <div class="form-actions">

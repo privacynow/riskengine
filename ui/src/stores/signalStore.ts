@@ -12,6 +12,7 @@ import {
   type SignalDraft,
 } from "@/api/types";
 import { useAuthStore } from "@/stores/authStore";
+import { usePromoteDialog } from "@/composables/usePromoteDialog";
 import { useUiStore } from "@/stores/uiStore";
 
 type SignalEdit = {
@@ -213,7 +214,6 @@ export const useSignalStore = defineStore("signal", {
         allow_caching: draft.allow_caching,
         global_reuse: draft.global_reuse,
         function_params_template: draft.function_params_template,
-        makeCurrentVersion: draft.makeCurrentVersion,
       };
       const token = draft.bearer_token.trim();
       if (token) payload.bearer_token = token;
@@ -313,8 +313,17 @@ export const useSignalStore = defineStore("signal", {
     },
 
     async setCurrentVersion(signalId: string) {
+      const signal = this.items.find((s) => s.id === signalId);
+      if (!signal) return;
+      const { promote } = usePromoteDialog();
+      const reason = await promote({
+        title: "Promote signal version",
+        message: `Promote "${signal.name}" to the live current version for this tenant.`,
+        confirmLabel: "Promote",
+      });
+      if (!reason) return;
       try {
-        await signalsApi.makeCurrent(signalId);
+        await signalsApi.makeCurrent(signalId, { promotionReason: reason });
         await this.loadAll(this.page);
         if (this.selectedId === signalId) {
           await this.selectSignal(signalId);

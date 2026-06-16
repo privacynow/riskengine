@@ -1,5 +1,32 @@
 <template>
-  <RouterLink :to="to" class="list-row">
+  <div
+    v-if="selectable"
+    class="list-row entity-table-row list-row--workbench"
+    :class="{ selected }"
+  >
+    <StatusBadge :variant="outcomeVariant" :text="outcomeLabel" />
+    <button type="button" class="list-row-open" @click="$emit('open')">
+      <span class="list-row-body">
+        <span class="list-row-title">{{ flowName }}</span>
+        <span class="list-row-meta">{{ metaLine }}</span>
+      </span>
+      <span class="list-row-trailing">
+        <span class="list-row-stats">
+          <span v-if="costLabel" class="list-row-cost">{{ costLabel }}</span>
+          <span class="list-row-time">{{ whenLabel }}</span>
+        </span>
+        <span class="list-row-action" aria-hidden="true">
+          <Icon name="arrowRight" :size="14" />
+        </span>
+      </span>
+    </button>
+  </div>
+  <RouterLink
+    v-else
+    :to="to!"
+    class="list-row"
+    :class="{ selected: selected ? 'selected' : undefined, 'entity-table-row': selected !== undefined }"
+  >
     <StatusBadge :variant="outcomeVariant" :text="outcomeLabel" />
     <div class="list-row-body">
       <span class="list-row-title">{{ flowName }}</span>
@@ -27,8 +54,15 @@ import StatusBadge from "@/components/workbench/StatusBadge.vue";
 
 const props = defineProps<{
   decision: DecisionSummary;
-  to: RouteLocationRaw;
+  to?: RouteLocationRaw;
+  selected?: boolean;
 }>();
+
+defineEmits<{
+  open: [];
+}>();
+
+const selectable = computed(() => !props.to);
 
 const outcomeLabel = computed(() => props.decision.final_decision_value || "—");
 const outcomeVariant = computed(() => decisionOutcomeVariant(props.decision.final_decision_value));

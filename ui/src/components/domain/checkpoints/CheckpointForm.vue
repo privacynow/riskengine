@@ -18,11 +18,15 @@
       </div>
     </FormSection>
 
-    <FormSection title="Decision DSL">
+    <FormSection title="Decision DSL" subtitle="Preflight validates syntax against associated signal names">
       <div class="form-field">
         <label>DSL expression</label>
         <textarea v-model="local.dsl_expression" class="code-input" rows="4" />
       </div>
+      <DslPreflightPanel
+        :expression="local.dsl_expression"
+        :signal-names="authoringSignalNames"
+      />
       <div class="form-field">
         <label>Method of call</label>
         <input v-model="local.method_of_call" type="text" />
@@ -63,29 +67,40 @@
       />
     </FormSection>
 
-    <FormSection title="Versioning">
-      <p v-if="!createNew" class="field-hint">
-        Saving updates this checkpoint version. Promote separately to make it live.
-      </p>
-      <div class="form-field checkbox-field">
-        <label>
-          <input v-model="local.makeCurrentVersion" type="checkbox" />
-          Make current version on save
-        </label>
+    <FormSection title="Versioning & promotion" subtitle="Promotion requires an audited reason">
+      <div class="rule-authoring-panel">
+        <p class="field-hint">
+          Saves create or update draft versions only. Promote from the flow list when ready —
+          promotion is enforced server-side with a required reason and audit record.
+        </p>
+        <dl v-if="!createNew" class="detail-list detail-list--compact">
+          <div><dt>Checkpoint ID</dt><dd class="text-mono">{{ local.id || "—" }}</dd></div>
+          <div><dt>Current expression</dt><dd class="text-mono rule-authoring-diff">{{ local.dsl_expression || "—" }}</dd></div>
+        </dl>
+        <RouterLink
+          v-if="!createNew && local.id"
+          class="btn-secondary btn-sm"
+          :to="testLabLink"
+        >
+          Draft test in Test Lab
+        </RouterLink>
       </div>
     </FormSection>
 
     <div class="form-actions">
       <button type="button" class="btn-secondary" @click="onCancel">Cancel</button>
-      <button type="button" class="btn-primary" @click="onSave">Save</button>
+      <button type="button" class="btn-primary" @click="onSave">Save version</button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
+import { RouterLink } from "vue-router";
 import type { CheckpointDraft } from "@/api/types";
+import { routeWithTenant } from "@/app/tenantNav";
 import CheckpointSignalsPanel from "@/components/domain/checkpoints/CheckpointSignalsPanel.vue";
+import DslPreflightPanel from "@/components/workbench/DslPreflightPanel.vue";
 import FormSection from "@/components/workbench/FormSection.vue";
 import FieldRow from "@/components/workbench/FieldRow.vue";
 
@@ -110,6 +125,16 @@ const emit = defineEmits<{
 }>();
 
 const local = ref<CheckpointDraft>({ ...props.modelValue });
+
+const authoringSignalNames = computed(() =>
+  local.value.associatedSignals.map((signal) => signal.name).filter(Boolean)
+);
+
+const testLabLink = computed(() =>
+  local.value.id
+    ? routeWithTenant({ name: "test-decisions", query: { checkpoint: local.value.id } })
+    : routeWithTenant({ name: "test-decisions" })
+);
 
 watch(
   () => props.modelValue,

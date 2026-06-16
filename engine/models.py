@@ -49,7 +49,7 @@ class TenantCreateUpdate(BaseModel):
 
 
 class CheckpointCreateUpdate(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     tenant_id: str
     name: str
@@ -60,11 +60,10 @@ class CheckpointCreateUpdate(BaseModel):
     max_cost: int = 0
     override_cost_flag: bool = False
     timeout_seconds: int = 30
-    make_current_version: bool = Field(False, alias="makeCurrentVersion")
 
 
 class SignalCreateUpdate(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     tenant_id: str
     name: str
@@ -85,13 +84,23 @@ class SignalCreateUpdate(BaseModel):
     allow_caching: bool = False
     global_reuse: bool = False
     function_params_template: Optional[str] = None
-    make_current_version: bool = Field(False, alias="makeCurrentVersion")
 
 
 class VariableValueCreateUpdate(BaseModel):
     signal_id: str
     name: str
     value: Optional[str] = None
+
+
+class DslPreflightRequest(BaseModel):
+    dsl_expression: str
+    signal_names: List[str] = Field(default_factory=list)
+
+
+class PromotionRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    promotion_reason: str = Field(..., alias="promotionReason", min_length=3, max_length=2000)
 
 
 class CheckpointSignalCreateUpdate(BaseModel):

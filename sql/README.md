@@ -13,6 +13,7 @@ Demo database bootstrap for local Docker and integration tests. Files run in ord
 |--------|-----|----------------|
 | Tenant (primary) | `11111111-1111-1111-1111-111111111111` | SAMPLE LENDING — smoke tests, UI demos |
 | Tenant (isolation) | `99999999-9999-9999-9999-999999999999` | OTHER BANK — multi-tenant auth tests |
+| Tenant (visual e2e) | `aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa` | VISUAL FIXTURE BANK — stable Playwright screenshots |
 | Checkpoint | `22222222-2222-2222-2222-222222222201` | Onboarding (current for SAMPLE LENDING) |
 | Decision log | `44444444-4444-4444-4444-444444444444` | Placeholder audit row for Onboarding |
 | Signal (variable) | `33333333-3333-3333-3333-333333333301` | age_check |

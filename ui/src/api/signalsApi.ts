@@ -26,9 +26,11 @@ export const signalsApi = {
       body: JSON.stringify(payload),
     });
   },
-  makeCurrent(id: string) {
+  makeCurrent(id: string, payload: { promotionReason: string }) {
     return httpJson<unknown>(`/ui/signals/${id}/make_current`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
   },
 };

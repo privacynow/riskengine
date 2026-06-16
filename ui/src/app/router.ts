@@ -63,6 +63,12 @@ const router = createRouter({
       meta: { auditType: "signal_logs" },
     },
     {
+      path: "/audit/promotions",
+      name: "audit-promotions",
+      component: () => import("@/views/AuditView.vue"),
+      meta: { auditType: "promotions" },
+    },
+    {
       path: "/test-lab",
       redirect: { name: "test-decisions" },
     },

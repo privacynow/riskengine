@@ -50,9 +50,15 @@ export async function loadRouteData(
     await assoc.loadCheckpoints(1);
     return;
   }
-  if (name === "audit-decisions" || name === "audit-signal-logs") {
+  if (name === "audit-decisions" || name === "audit-signal-logs" || name === "audit-promotions") {
     const audit = useAuditStore();
-    audit.entityType = to.meta.auditType === "signal_logs" ? "signal_logs" : "decisions";
+    const auditType = to.meta.auditType;
+    audit.entityType =
+      auditType === "signal_logs"
+        ? "signal_logs"
+        : auditType === "promotions"
+          ? "promotions"
+          : "decisions";
     if (useTenantStore().activeTenantId) {
       await audit.search(1);
       const decisionId = to.query?.decision;
@@ -62,6 +68,10 @@ export async function loadRouteData(
       const signalLogId = to.query?.signal_log;
       if (typeof signalLogId === "string" && signalLogId) {
         audit.selectSignalLog(signalLogId);
+      }
+      const promotionId = to.query?.promotion;
+      if (typeof promotionId === "string" && promotionId) {
+        await audit.selectPromotion(promotionId);
       }
     }
     return;

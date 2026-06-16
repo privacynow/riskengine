@@ -439,9 +439,11 @@ label {
   .toolbar .form-control,
   .toolbar input[type="text"],
   .toolbar input[type="search"],
+  .toolbar input[type="date"],
   .toolbar select,
   .form-inline input[type="text"],
   .form-inline input[type="search"],
+  .form-inline input[type="date"],
   .form-inline select,
   .search-container input[type="text"],
   .search-container input[type="search"] {
@@ -462,6 +464,10 @@ label {
 
   .toolbar-spacer {
     display: none;
+  }
+
+  .toolbar-checkbox {
+    width: 100%;
   }
 
   .pagination {

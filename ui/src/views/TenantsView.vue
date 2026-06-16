@@ -1,5 +1,10 @@
 <template>
   <div class="tenants-view">
+    <PageHeader
+      title="Tenants"
+      subtitle="Create tenants, set the active workspace, and manage isolation boundaries."
+    />
+
     <DataToolbar>
       <input
         v-model="searchTerm"
@@ -127,6 +132,7 @@ import DataToolbar from "@/components/primitives/DataToolbar.vue";
 import ResourceTable from "@/components/primitives/ResourceTable.vue";
 import EmptyState from "@/components/primitives/EmptyState.vue";
 import AppPagination from "@/components/primitives/AppPagination.vue";
+import PageHeader from "@/components/workbench/PageHeader.vue";
 import { useTenantStore } from "@/stores/tenantStore";
 
 const store = useTenantStore();

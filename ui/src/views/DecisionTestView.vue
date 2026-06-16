@@ -2,7 +2,7 @@
   <div class="decision-test-view">
     <PageHeader
       title="Test Lab"
-      subtitle="Run decision scenarios and inspect per-signal execution."
+      subtitle="Controlled pre-promotion harness for decision flows."
     />
 
     <DataToolbar>
@@ -22,6 +22,8 @@
       message="Use the tenant bar above to run test decisions."
     />
 
+    <LoadingSkeleton v-else-if="loading" block />
+
     <EmptyState
       v-else-if="!checkpoints.length"
       title="No decision flows loaded"
@@ -30,42 +32,18 @@
 
     <WorkbenchLayout v-else :split="!!selectedCheckpointId">
       <template #master>
-        <ResourceTable>
-          <template #table>
-            <table class="resource-table">
-              <thead>
-                <tr>
-                  <th>Flow</th>
-                  <th>Type</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="cp in checkpoints"
-                  :key="cp.id"
-                  class="entity-table-row"
-                  :class="{ selected: selectedCheckpointId === cp.id }"
-                  @click="selectCheckpoint(cp.id)"
-                >
-                  <td>{{ cp.name }}</td>
-                  <td>{{ cp.type || "—" }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </template>
-          <template #cards>
-            <div
+        <div class="card workbench-list-card">
+          <div class="list-row-stack">
+            <FlowListRow
               v-for="cp in checkpoints"
-              :key="'card-' + cp.id"
-              class="resource-card card"
-              :class="{ selected: selectedCheckpointId === cp.id }"
-              @click="selectCheckpoint(cp.id)"
-            >
-              <strong>{{ cp.name }}</strong>
-              <span class="text-muted">{{ cp.type }}</span>
-            </div>
-          </template>
-        </ResourceTable>
+              :key="cp.id"
+              :checkpoint="cp"
+              :selected="selectedCheckpointId === cp.id"
+              :promotable="false"
+              @open="selectCheckpoint(cp.id)"
+            />
+          </div>
+        </div>
 
         <AppPagination
           :page="page"
@@ -76,49 +54,90 @@
       </template>
 
       <template v-if="activeCheckpoint" #detail>
-        <div class="workbench-detail-header">
-          <div>
-            <h3>{{ activeCheckpoint.name }}</h3>
-            <p class="field-hint">DSL: {{ activeCheckpoint.dsl_expression }}</p>
-          </div>
-        </div>
-        <div class="workbench-detail-body">
-          <FieldRow :columns="2">
-            <div class="form-field">
-              <label>Applicant ID</label>
-              <input v-model="applicantIds[activeCheckpoint.id]" type="text" />
+        <div class="workbench-detail-body test-harness">
+          <div class="test-harness-hero">
+            <div class="test-harness-hero-main">
+              <h3>{{ activeCheckpoint.name }}</h3>
+              <div class="test-harness-hero-badges">
+                <StatusBadge
+                  :variant="activeCheckpoint.is_current_version ? 'current' : 'inactive'"
+                  :text="activeCheckpoint.is_current_version ? 'Current version' : 'Draft version'"
+                />
+                <span v-if="activeCheckpoint.type" class="text-muted">{{ activeCheckpoint.type }}</span>
+              </div>
+              <p v-if="activeCheckpoint.description" class="field-hint">
+                {{ activeCheckpoint.description }}
+              </p>
             </div>
-            <div class="form-field">
-              <label>Correlation ID</label>
-              <input v-model="correlationIds[activeCheckpoint.id]" type="text" />
-            </div>
-          </FieldRow>
-
-          <button type="button" class="btn-ghost btn-sm" @click="toggleExpand(activeCheckpoint.id)">
-            {{ expanded[activeCheckpoint.id] ? "Hide parameters" : "Configure parameters" }}
-          </button>
-
-          <div v-if="expanded[activeCheckpoint.id]" class="expandable-panel">
-            <div
-              v-for="sig in assocSignals[activeCheckpoint.id] || []"
-              :key="sig.id"
-              class="signal-param-block"
+            <RouterLink
+              class="btn-secondary btn-sm"
+              :to="flowDetailLink"
             >
-              <strong>{{ sig.name }}</strong>
-              <div v-for="ph in sig.param_placeholders || []" :key="ph" class="form-field">
-                <label>{{ ph }}</label>
-                <input v-model="params[activeCheckpoint.id][sig.id][ph]" type="text" />
+              Open flow
+            </RouterLink>
+          </div>
+
+          <FormSection title="DSL preflight" subtitle="Validate expression before promotion">
+            <DslPreflightPanel
+              :expression="activeCheckpoint.dsl_expression ?? ''"
+              :signal-names="harnessSignalNames"
+            />
+            <pre class="code-block code-block--compact">{{ activeCheckpoint.dsl_expression }}</pre>
+          </FormSection>
+
+          <FormSection title="Scenario inputs" subtitle="Fixture data for this test run">
+            <FieldRow :columns="2">
+              <div class="form-field">
+                <label>Applicant ID</label>
+                <input v-model="applicantIds[activeCheckpoint.id]" type="text" />
+              </div>
+              <div class="form-field">
+                <label>Correlation ID</label>
+                <input v-model="correlationIds[activeCheckpoint.id]" type="text" />
+              </div>
+            </FieldRow>
+
+            <button type="button" class="btn-ghost btn-sm" @click="toggleExpand(activeCheckpoint.id)">
+              {{ expanded[activeCheckpoint.id] ? "Hide signal parameters" : "Configure signal parameters" }}
+            </button>
+
+            <div v-if="expanded[activeCheckpoint.id]" class="expandable-panel test-harness-params">
+              <div
+                v-for="sig in assocSignals[activeCheckpoint.id] || []"
+                :key="sig.id"
+                class="signal-param-block"
+              >
+                <strong>{{ sig.name }}</strong>
+                <div v-for="ph in sig.param_placeholders || []" :key="ph" class="form-field">
+                  <label>{{ ph }}</label>
+                  <input v-model="params[activeCheckpoint.id][sig.id][ph]" type="text" />
+                </div>
               </div>
             </div>
-          </div>
+          </FormSection>
 
-          <div class="form-actions">
-            <button type="button" class="btn-primary" :disabled="running" @click="invoke(activeCheckpoint.id)">
-              {{ running ? "Running…" : "Run test" }}
-            </button>
-          </div>
+          <FormSection title="Run test">
+            <p class="field-hint">
+              Executes the selected flow version server-side without promoting it live.
+            </p>
+            <div class="form-actions">
+              <button
+                type="button"
+                class="btn-primary"
+                :disabled="running"
+                @click="invoke(activeCheckpoint.id)"
+              >
+                {{ running ? "Running…" : "Run test decision" }}
+              </button>
+            </div>
+          </FormSection>
 
-          <DecisionResultPanel :result="responses[activeCheckpoint.id] || null" />
+          <div v-if="responses[activeCheckpoint.id]" class="test-harness-result">
+            <DecisionResultPanel
+              :result="responses[activeCheckpoint.id] || null"
+              variant="harness"
+            />
+          </div>
         </div>
       </template>
     </WorkbenchLayout>
@@ -127,15 +146,21 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
+import { RouterLink } from "vue-router";
 import { storeToRefs } from "pinia";
+import { routeWithTenant } from "@/app/tenantNav";
 import DataToolbar from "@/components/primitives/DataToolbar.vue";
 import EmptyState from "@/components/primitives/EmptyState.vue";
 import AppPagination from "@/components/primitives/AppPagination.vue";
-import ResourceTable from "@/components/primitives/ResourceTable.vue";
 import PageHeader from "@/components/workbench/PageHeader.vue";
 import WorkbenchLayout from "@/components/workbench/WorkbenchLayout.vue";
 import FieldRow from "@/components/workbench/FieldRow.vue";
+import FlowListRow from "@/components/workbench/FlowListRow.vue";
+import StatusBadge from "@/components/workbench/StatusBadge.vue";
+import FormSection from "@/components/workbench/FormSection.vue";
+import DslPreflightPanel from "@/components/workbench/DslPreflightPanel.vue";
 import DecisionResultPanel from "@/components/workbench/DecisionResultPanel.vue";
+import LoadingSkeleton from "@/components/workbench/LoadingSkeleton.vue";
 import { useDecisionTestStore } from "@/stores/decisionTestStore";
 import { useTenantStore } from "@/stores/tenantStore";
 
@@ -155,12 +180,28 @@ const {
   responses,
   selectedCheckpointId,
   running,
+  loading,
 } = storeToRefs(testStore);
 
 const { activeTenant } = storeToRefs(tenantStore);
 
 const activeCheckpoint = computed(() =>
   checkpoints.value.find((cp) => cp.id === selectedCheckpointId.value)
+);
+
+const harnessSignalNames = computed(() => {
+  const cpId = activeCheckpoint.value?.id;
+  if (!cpId) return [];
+  return (assocSignals.value[cpId] || []).map((sig) => sig.name);
+});
+
+const flowDetailLink = computed(() =>
+  activeCheckpoint.value
+    ? routeWithTenant({
+        name: "checkpoint-detail",
+        params: { checkpointId: activeCheckpoint.value.id },
+      })
+    : routeWithTenant({ name: "checkpoints" })
 );
 
 const { loadAll, search, toggleExpand, invoke, selectCheckpoint } = testStore;

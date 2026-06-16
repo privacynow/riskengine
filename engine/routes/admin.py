@@ -12,9 +12,16 @@ from ..models import (
     CheckpointSignalCreateUpdate,
     DecisionRequest,
     DecisionResponse,
+    DslPreflightRequest,
+    PromotionRequest,
     SignalCreateUpdate,
     TenantCreateUpdate,
     VariableValueCreateUpdate,
+)
+from ..services.dsl_preflight import preflight_dsl
+from ..services.promotion_audit import (
+    normalize_promotion_reason,
+    record_promotion_audit,
 )
 from ..services.admin_responses import admin_mutation
 from ..services.decision import execute_decision
@@ -346,16 +353,6 @@ def create_checkpoint(payload: CheckpointCreateUpdate):
         
         new_checkpoint_id = cur.fetchone()[0]
         
-        # If this should be the current version
-        if payload.make_current_version:
-            cur.execute("""
-                INSERT INTO checkpoint_current_version (tenant_id, name, checkpoint_id)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (tenant_id, name) DO UPDATE
-                SET checkpoint_id = EXCLUDED.checkpoint_id,
-                    updated_at = NOW()
-            """, (payload.tenant_id, payload.name, new_checkpoint_id))
-        
         conn.commit()
         return admin_mutation("created", new_checkpoint_id)
     
@@ -398,59 +395,6 @@ def create_signal(payload: SignalCreateUpdate):
         ))
         
         new_signal_id = cur.fetchone()[0]
-        
-        # If this should be the current version
-        if payload.make_current_version:
-            # First update the signal's current version
-            cur.execute("""
-                INSERT INTO signal_current_version (tenant_id, name, signal_id)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (tenant_id, name) DO UPDATE
-                SET signal_id = EXCLUDED.signal_id,
-                    updated_at = NOW()
-            """, (payload.tenant_id, payload.name, new_signal_id))
-            
-            # Then copy and update associated checkpoints
-            cur.execute("""
-                WITH RECURSIVE
-                upstream_checkpoints AS (
-                    -- Get directly associated checkpoints
-                    SELECT DISTINCT c.id, c.tenant_id, c.name, c.description,
-                           c.type, c.dsl_expression, c.method_of_call,
-                           c.max_cost, c.override_cost_flag, c.timeout_seconds
-                    FROM checkpoints c
-                    JOIN checkpoint_signals cs ON c.id = cs.checkpoint_id
-                    WHERE cs.signal_id = %s
-                    
-                    UNION
-                    
-                    -- Get checkpoints that reference this signal in expressions
-                    SELECT DISTINCT c.id, c.tenant_id, c.name, c.description,
-                           c.type, c.dsl_expression, c.method_of_call,
-                           c.max_cost, c.override_cost_flag, c.timeout_seconds
-                    FROM checkpoints c
-                    WHERE c.dsl_expression LIKE '%%' || %s || '%%'
-                )
-                INSERT INTO checkpoints (
-                    tenant_id, name, description, type, dsl_expression,
-                    method_of_call, max_cost, override_cost_flag, timeout_seconds
-                )
-                SELECT tenant_id, name, description, type, dsl_expression,
-                       method_of_call, max_cost, override_cost_flag, timeout_seconds
-                FROM upstream_checkpoints
-                RETURNING id, name
-            """, (new_signal_id, payload.name))
-            
-            # Update checkpoint current versions
-            checkpoint_updates = cur.fetchall()
-            for new_cp_id, cp_name in checkpoint_updates:
-                cur.execute("""
-                    INSERT INTO checkpoint_current_version (tenant_id, name, checkpoint_id)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (tenant_id, name) DO UPDATE
-                    SET checkpoint_id = EXCLUDED.checkpoint_id,
-                        updated_at = NOW()
-                """, (payload.tenant_id, cp_name, new_cp_id))
         
         conn.commit()
         return admin_mutation("created", new_signal_id)
@@ -588,7 +532,7 @@ def list_checkpoints(tenant_id: Optional[str] = None, page: int = 1, size: int =
         if where_clause:
             base_query += " WHERE " + " AND ".join(where_clause)
 
-        base_query += " ORDER BY c.created_at DESC"
+        base_query += " ORDER BY c.name ASC, c.id ASC"
 
         # Get total count
         count_query = f"SELECT COUNT(*) FROM ({base_query}) as count_query"
@@ -818,6 +762,8 @@ def list_signals(checkpoint_id: Optional[str] = None,
             params = []
             if active_only:
                 base_query += " WHERE scv.signal_id IS NOT NULL"
+
+        base_query += " ORDER BY s.name ASC, s.id ASC"
 
         total, rows = paginate_query(cur, base_query, params, page, size)
         items = [_admin_signal_item_from_row(r, include_current=True) for r in rows]
@@ -1216,6 +1162,8 @@ def search_checkpoints(
         if active_only:
             base_query += " AND cv.checkpoint_id IS NOT NULL"
 
+        base_query += " ORDER BY c.name ASC, c.id ASC"
+
         total, rows = paginate_query(cur, base_query, params, page, size)
         items = []
         for r in rows:
@@ -1269,6 +1217,8 @@ def search_signals(q: str, tenant_id: Optional[str] = None, page: int = 1, size:
         
         if active_only:
             base_query += " AND scv.signal_id IS NOT NULL"
+
+        base_query += " ORDER BY s.name ASC, s.id ASC"
 
         total, rows = paginate_query(cur, base_query, params, page, size)
         items = [_admin_signal_item_from_row(r, include_current=True) for r in rows]
@@ -1549,9 +1499,102 @@ def search_signal_logs(
             conn.close()
 
 
+@router.get("/ui/promotion_audit")
+def search_promotion_audit(
+    tenant_id: Optional[str] = None,
+    q: Optional[str] = None,
+    page: int = 1,
+    size: int = 10,
+):
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        base_query = """
+            SELECT id, tenant_id, resource_type, resource_id, resource_name,
+                   actor_id, promotion_reason, source, created_at
+              FROM promotion_audit
+             WHERE 1=1
+        """
+        params: list[object] = []
+        if tenant_id:
+            base_query += " AND tenant_id = %s"
+            params.append(tenant_id)
+        if q:
+            like = f"%{q}%"
+            base_query += """
+                AND (
+                    resource_name ILIKE %s
+                    OR promotion_reason ILIKE %s
+                    OR actor_id ILIKE %s
+                    OR resource_type ILIKE %s
+                )
+            """
+            params.extend([like, like, like, like])
+        base_query += " ORDER BY created_at DESC, id ASC"
+
+        total, rows = paginate_query(cur, base_query, params, page, size)
+        items = [_promotion_audit_row_to_item(row) for row in rows]
+        return build_paginated_response(items, total, page, size)
+    finally:
+        if conn:
+            conn.close()
+
+
+def _promotion_audit_row_to_item(row) -> dict:
+    return {
+        "id": str(row[0]),
+        "tenant_id": str(row[1]),
+        "resource_type": row[2],
+        "resource_id": str(row[3]),
+        "resource_name": row[4],
+        "actor_id": row[5],
+        "promotion_reason": row[6],
+        "source": row[7],
+        "created_at": row[8].isoformat() if row[8] else None,
+    }
+
+
+@router.get("/ui/promotion_audit/{promotion_id}")
+def get_promotion_audit(promotion_id: str, tenant_id: Optional[str] = None):
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, tenant_id, resource_type, resource_id, resource_name,
+                   actor_id, promotion_reason, source, created_at
+              FROM promotion_audit
+             WHERE id = %s
+            """,
+            (promotion_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Promotion audit record not found.")
+        if tenant_id and str(row[1]) != tenant_id:
+            raise HTTPException(status_code=404, detail="Promotion audit record not found.")
+        return _promotion_audit_row_to_item(row)
+    finally:
+        if conn:
+            conn.close()
+
+
+@router.post("/ui/dsl_preflight")
+def dsl_preflight(payload: DslPreflightRequest):
+    """Validate checkpoint DSL syntax before save or promotion."""
+    return preflight_dsl(payload.dsl_expression, payload.signal_names)
+
+
 @router.post("/ui/checkpoints/{checkpoint_id}/make_current")
-def make_checkpoint_current(checkpoint_id: str):
+def make_checkpoint_current(
+    checkpoint_id: str,
+    payload: PromotionRequest,
+    auth: AuthContext = Depends(require_admin),
+):
     """Make a checkpoint the current version for its tenant and name."""
+    promotion_reason = normalize_promotion_reason(payload.promotion_reason)
     conn = get_db_connection()
     cur = conn.cursor()
     try:
@@ -1576,6 +1619,16 @@ def make_checkpoint_current(checkpoint_id: str):
                 checkpoint_id = EXCLUDED.checkpoint_id,
                 updated_at = NOW()
         """, (tenant_id, checkpoint_name, checkpoint_id))
+
+        record_promotion_audit(
+            cur,
+            tenant_id=str(tenant_id),
+            resource_type="checkpoint",
+            resource_id=checkpoint_id,
+            resource_name=checkpoint_name,
+            actor_id=auth.actor_id,
+            promotion_reason=promotion_reason,
+        )
         
         conn.commit()
         return admin_mutation("promoted", checkpoint_id)
@@ -1587,63 +1640,14 @@ def make_checkpoint_current(checkpoint_id: str):
         conn.close()
 
 
-@router.post("/ui/signals/{signal_id}/toggle_active")
-def toggle_signal_active(signal_id: str):
-    """Toggle a signal's active status by adding/removing it from signal_current_version."""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    try:
-        # Get the tenant_id and name for this signal
-        cur.execute("""
-            SELECT tenant_id, name FROM signals 
-            WHERE id = %s
-        """, (signal_id,))
-        signal = cur.fetchone()
-        if not signal:
-            raise HTTPException(status_code=404, detail="Signal not found")
-        
-        tenant_id, signal_name = signal
-
-        # Check if signal is currently active
-        cur.execute("""
-            SELECT signal_id FROM signal_current_version 
-            WHERE tenant_id = %s AND name = %s
-        """, (tenant_id, signal_name))
-        is_active = cur.fetchone() is not None
-
-        if is_active:
-            # If active, remove from signal_current_version
-            cur.execute("""
-                DELETE FROM signal_current_version 
-                WHERE tenant_id = %s AND name = %s
-            """, (tenant_id, signal_name))
-        else:
-            # If not active, insert into signal_current_version
-            cur.execute("""
-                INSERT INTO signal_current_version (tenant_id, name, signal_id)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (tenant_id, name) DO UPDATE 
-                SET signal_id = EXCLUDED.signal_id,
-                    updated_at = NOW()
-            """, (tenant_id, signal_name, signal_id))
-
-        conn.commit()
-        return admin_mutation(
-            "activated" if not is_active else "deactivated",
-            signal_id,
-            is_active=not is_active,
-        )
-    except Exception as e:
-        conn.rollback()
-        raise_admin_error(e, context="toggle_signal_active failed")
-    finally:
-        cur.close()
-        conn.close()
-
-
 @router.post("/ui/signals/{signal_id}/make_current")
-def make_signal_current(signal_id: str):
+def make_signal_current(
+    signal_id: str,
+    payload: PromotionRequest,
+    auth: AuthContext = Depends(require_admin),
+):
     """Set a signal as the current version for its tenant and name."""
+    promotion_reason = normalize_promotion_reason(payload.promotion_reason)
     conn = get_db_connection()
     try:
         # Get the tenant_id and name for this signal
@@ -1663,8 +1667,19 @@ def make_signal_current(signal_id: str):
             INSERT INTO signal_current_version (tenant_id, name, signal_id)
             VALUES (%s, %s, %s)
             ON CONFLICT (tenant_id, name)
-            DO UPDATE SET signal_id = EXCLUDED.signal_id
+            DO UPDATE SET signal_id = EXCLUDED.signal_id,
+                updated_at = NOW()
         """, (tenant_id, signal_name, signal_id))
+
+        record_promotion_audit(
+            cur,
+            tenant_id=str(tenant_id),
+            resource_type="signal",
+            resource_id=signal_id,
+            resource_name=signal_name,
+            actor_id=auth.actor_id,
+            promotion_reason=promotion_reason,
+        )
         
         conn.commit()
         return admin_mutation("promoted", signal_id)
