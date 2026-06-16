@@ -12,6 +12,10 @@ __pycache__/
 .DS_Store
 .env
 .env.*
+!.env.example
+auth.tokens.local.json
+node_modules/
+package-lock.json
 *.pem
 postgres_data/
 docs/internal/

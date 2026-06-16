@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS signals (
     request_url_params_template TEXT,
     request_body_template TEXT,
     request_headers_template TEXT,
+    -- Demo-only: outbound connector token stored plaintext; API reads return has_bearer_token only.
     bearer_token TEXT,
     allow_caching BOOLEAN NOT NULL DEFAULT FALSE,
     global_reuse BOOLEAN NOT NULL DEFAULT FALSE,

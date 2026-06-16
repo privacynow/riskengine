@@ -7,27 +7,44 @@ This repository is designed to run locally or on any host with Docker Compose. T
 On a VM or bare-metal host with Docker installed:
 
 ```sh
-git clone <repo-url> decision-engine
-cd decision-engine
+bash scripts/create_demo_env.sh
 docker compose up -d --build
 bash scripts/smoke_test.sh
 ```
 
 Expose port `8000` through your reverse proxy or security group. Do **not** publish the admin UI or APIs to the public internet without authentication (see [ROADMAP.md](../ROADMAP.md)).
 
+Generate local demo credentials before first boot:
+
+```sh
+bash scripts/create_demo_env.sh
+```
+
+This writes ignored `.env.local` and `auth.tokens.local.json`. Docker Compose loads them automatically.
+
 ## Environment variables
 
-The app container reads standard Postgres settings:
+### Auth (required)
 
-| Variable | Default |
+| Variable | Purpose |
 |----------|---------|
-| `DB_HOST` | `postgres` (in Compose) |
+| `DECISION_ENGINE_AUTH_TOKENS` | JSON map of bearer token → `{ tenant_id, actor_id, roles }` |
+| `DECISION_ENGINE_AUTH_TOKENS_FILE` | Path to the same JSON structure |
+
+The app fails startup if neither is set.
+
+### Database (required)
+
+| Variable | Notes |
+|----------|--------|
+| `DB_HOST` | `postgres` in Compose |
 | `DB_PORT` | `5432` |
 | `DB_NAME` | `risk_engine_db` |
 | `DB_USER` | `postgres` |
-| `DB_PASSWORD` | `postgres` |
+| `DB_PASSWORD` | **Required** — generated into `.env.local`; no default in app code |
+| `POSTGRES_PASSWORD` | Must match `DB_PASSWORD` for the Postgres container |
 
-Override these in `docker-compose.yml` or via Compose env files for non-demo environments.
+Postgres binds to **`127.0.0.1:5432`** only (not all interfaces). Override via Compose for non-demo environments.
 
 ## Optional: sync artifacts to a remote host
 

@@ -7,6 +7,9 @@ __pycache__/
 .vscode/
 .env
 .env.*
+auth.tokens.local.json
+.env.local
+node_modules/
 *.pem
 docs/internal/
 risk_engine.txt

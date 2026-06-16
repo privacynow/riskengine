@@ -1,163 +1,146 @@
 ## System Overview
 
-The Risk Decision Engine is a multi-tenant system that allows users (e.g., underwriters, compliance officers, or developers) to define checkpoints—decision points that incorporate signals (data checks, calls to internal or external services, local functions, or variable lookups). The system:
+**Decision Engine** is a multi-tenant prototype for configurable checkpoint evaluation. Checkpoints combine signals (HTTP calls, local functions, variables, expressions) and a DSL expression to produce a pass/fail outcome with audit logging.
 
-1. Receives requests to evaluate a checkpoint (e.g., “Onboarding,” “Underwriting”).
-2. Loads configuration (e.g., a DSL expression, signals).
-3. Invokes each signal in **evaluation order** (`order_of_evaluation`). Signals that share an order run concurrently today; the `can_run_in_parallel` flag is stored but not yet enforced (see [ROADMAP.md](ROADMAP.md)).
-4. Evaluates a final DSL expression referencing the signals.
-5. Logs everything for auditing.
-6. Caches signals (in-memory and DB) when `allow_caching` is enabled.
+1. Receives `POST /decisions` with a `checkpoint_name` (tenant comes from auth, not the request body).
+2. Loads the **current** checkpoint via `checkpoint_current_version`.
+3. Resolves linked signals through **current** `signal_current_version` pointers only (no fallback to stale rows).
+4. Invokes signals in `order_of_evaluation` order. Same-order signals run sequentially under cost limits, or concurrently when `override_cost_flag` is true.
+5. Evaluates the checkpoint DSL with `simpleeval`.
+6. Logs to `decision_log` / `signal_log`.
 
-**Cost limits:** The engine skips signals when cumulative cost would exceed `max_cost` (unless `override_cost_flag` is set).
+**Cost limits:** When `override_cost_flag` is false, same-order signals run sequentially and cumulative cost is checked before each signal. When `override_cost_flag` is true, same-order signals may run concurrently without cost gating.
 
-**Not yet implemented:** Per-signal/checkpoint HTTP timeouts (external calls use a fixed 5s client timeout today) and selective parallelism based on `can_run_in_parallel`.
+**Not yet implemented:** Per-signal HTTP timeouts beyond a fixed 5s client default, `can_run_in_parallel` enforcement, immutable config writes (Step B).
 
-It also includes a UI (a single-page application) and a UI Backend for admin/maintenance tasks like creating new tenants, checkpoints, signals, and variables.
-
-> **Status:** Working prototype / architectural spike. See [ROADMAP.md](ROADMAP.md) for known limitations and planned milestones.
+> **Status:** Working prototype. See [ROADMAP.md](ROADMAP.md).
 
 ---
 
-## Risk Engine
+## Architecture
 
-### Architecture
+FastAPI app split into modules:
 
-The Risk Engine is a FastAPI application exposing these endpoints:
+| Module | Role |
+|--------|------|
+| `auth.py` | Bearer token validation (env-configured only) |
+| `db.py` | Postgres connection helper |
+| `models.py` | Pydantic request/response models |
+| `services/decision.py` | Decision orchestration |
+| `services/tenancy.py` | Current checkpoint/signal resolution |
+| `routes/runtime.py` | `/decisions`, `/checkpoints`, `/signals` |
+| `routes/admin.py` | `/ui/*` admin CRUD |
+| `demo/mocks.py` | `/mock/*` stub endpoints (hidden from OpenAPI) |
 
-- `GET /checkpoints/{checkpoint_name}`: Returns checkpoint details (including associated signals).
-- `GET /signals/{signal_name}`: Returns signal details.
-- `POST /decisions`: Invokes a decision for a given `checkpoint_name`, plus an optional `applicant_id` and `correlation_id`.
-- `GET /decisions/{decision_id}`: Retrieves an audit record of a past decision (with signals invoked).
-- `GET /mock/{name}`: Demo stub endpoints used by sample internal/external signals.
-
-Internally, it is composed of:
-
-- **Routing + Controllers**: The FastAPI paths for the endpoints.
-- **Logic Layer**: The decision orchestration (`make_decision(...)`), caching checks, DSL evaluation, cost tracking, and concurrency.
-- **Audit Logging**: An asynchronous queue that writes to `decision_log` and `signal_log` in the database.
-
-The system is designed so that configuration (signals, checkpoints) is stored in the DB, not in code. Therefore, new signals can be added or modified without redeploying the service.
+OpenAPI (including `BearerAuth`) is at `/docs`.
 
 ---
 
-### Execution Flow (Decision)
+## Authentication
 
-When the user (or an external system) calls `POST /decisions` with `checkpoint_name` (and optionally `applicant_id`, `correlation_id`), the following occurs:
+All runtime and admin routes require `Authorization: Bearer <token>`.
 
-1. **Lookup Checkpoint**: Queries checkpoints for a row matching the name.
-2. **Find Signals**: Joins with `checkpoint_signals → signals`.
-3. **Ordered execution:** Signals are grouped by `order_of_evaluation`. All signals in the same order group run concurrently; cost limits may skip expensive signals. Optional DB/in-memory caching applies when configured.
-4. **Evaluate DSL:** `simpleeval` evaluates the checkpoint expression using `{ signal_name: signal_value }`.
-5. **Asynchronous logging:** Final decision and per-signal invocations are logged.
-6. **Response:** Returns `decision_id`, `final_decision_value`, `cost_incurred`, and `signal_results`.
+**No production or demo bearer token values are committed in app source, seed data, or Docker images.** Configure auth via environment. Obvious fake tokens exist only in `tests/conftest.py` for pytest.
 
-See [ROADMAP.md](ROADMAP.md) for planned runtime improvements (tenant/current-version resolution, configurable timeouts, parallelism flags).
+| Variable | Purpose |
+|----------|---------|
+| `DECISION_ENGINE_AUTH_TOKENS` | JSON map of bearer token → `{ tenant_id, actor_id, roles }` |
+| `DECISION_ENGINE_AUTH_TOKENS_FILE` | Path to a JSON file with the same structure |
+
+The app **fails startup** if neither is set.
+
+### Local demo bootstrap
+
+```sh
+bash scripts/create_demo_env.sh
+```
+
+This writes **ignored** `.env.local` and `auth.tokens.local.json` with random tokens and prints the admin bearer token. Docker Compose loads `.env.local` and mounts the token file into the app container.
+
+Use that admin token when the `/admin/` UI prompts for login. Runtime tokens stay on the server — the admin UI runs test decisions via `POST /ui/test_decisions`.
+
+Runtime clients **must not** send `tenant_id` or `tenant_name`; attempting to do so returns `403`.
+
+See [api/README.md](api/README.md) for token JSON shape.
 
 ---
 
-## UI and UI Backend
+## UI and Admin API
 
-The UI is a Vue 2 single-page app served at **`/admin/`** (static files under `ui/`). JavaScript dependencies are **vendored locally** under `ui/vendor/` (no CDN required). JSON admin APIs live under **`/ui/...`**.
-
-Primary admin capabilities:
-
-- Tenants, checkpoints, signals, variable values, checkpoint-signal associations
-- Search endpoints for tenants, checkpoints, signals, decisions, and signal logs
-- Test Decision flow in the admin UI
+Vue 2 SPA at **`/admin/`** (vendored assets under `ui/vendor/`). The UI is a **local demo shell**: it prompts for an admin bearer token from your generated `.env.local` (stored in `sessionStorage` only). Admin JSON API under **`/ui/...`**.
 
 ---
 
 ## Database
 
-PostgreSQL stores tenants, checkpoints, signals, associations, audit logs, `signal_variable_values`, `signal_cached_values`, and current-version pointer tables (`checkpoint_current_version`, `signal_current_version`).
-
-Schema: [`sql/01_schema.sql`](sql/01_schema.sql)  
-Sample data: [`sql/02_sample_data.sql`](sql/02_sample_data.sql) (includes demo tenant **SAMPLE LENDING** and mock-friendly signal URLs)
-
-Sample bearer-token fields use clearly fake values such as `EXAMPLE-KYC-TOKEN-NOT-REAL`.
+PostgreSQL (`risk_engine_db` in Docker Compose). Schema: [`sql/01_schema.sql`](sql/01_schema.sql). Sample data: [`sql/02_sample_data.sql`](sql/02_sample_data.sql).
 
 ---
 
 ## Quick Start (Docker)
 
-Prerequisites: Docker and Docker Compose.
-
 ```sh
 git clone <your-repo-url>
 cd decision-engine
+bash scripts/create_demo_env.sh
 docker compose up -d --build
-```
-
-On first start, Postgres runs `sql/01_schema.sql` then `sql/02_sample_data.sql` from `docker-entrypoint-initdb.d`.
-
-Open the admin UI:
-
-```sh
 open http://localhost:8000/admin/
-```
-
-Run the smoke test (assumes stack is already up):
-
-```sh
 bash scripts/smoke_test.sh
 ```
 
-For a clean-room verification (destroys the local DB volume first):
+Clean-room bootstrap (destroys DB volume, generates env if missing):
 
 ```sh
 bash scripts/bootstrap_smoke.sh
 ```
 
-Helper scripts (all use `docker compose`):
-
-| Script | Purpose |
-|--------|---------|
-| `scripts/run.sh` | Start stack and apply SQL to an existing volume |
-| `scripts/destroy.sh` | Stop stack and remove the Postgres volume |
-| `scripts/redeploy_engine.sh` | Rebuild/recreate the app container |
-| `scripts/redeploy_db.sh` | Reset Postgres volume and re-seed sample data |
-| `scripts/redeploy_all.sh` | Destroy, run, and smoke test |
-
-Example decision request:
+Example runtime decision (use `SMOKE_SAMPLE_TOKEN` from `.env.local`):
 
 ```sh
+set -a && source .env.local && set +a
 curl -s -X POST http://localhost:8000/decisions \
+  -H "Authorization: Bearer ${SMOKE_SAMPLE_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{"checkpoint_name":"Onboarding","applicant_id":"demo-1","correlation_id":"demo"}'
+```
+
+Run pytest inside the app container (integration tests need Postgres):
+
+```sh
+docker compose exec -e RUN_INTEGRATION_TESTS=1 risk-engine pytest -q
 ```
 
 ---
 
 ## Local Development (without Docker)
 
-1. Start PostgreSQL and create database `risk_engine_db`.
+1. Start PostgreSQL and create `risk_engine_db`.
 2. Apply `sql/01_schema.sql`, then `sql/02_sample_data.sql`.
-3. `python3 -m venv .venv && source .venv/bin/activate`
-4. `pip install -r requirements.txt`
-5. Export DB env vars if needed (`DB_HOST`, `DB_USER`, `DB_PASSWORD`, ...).
-6. `uvicorn main:app --host 0.0.0.0 --port 8000`
-7. Open `http://localhost:8000/admin/`
+3. `bash scripts/create_demo_env.sh` and `set -a && source .env.local && set +a`
+4. `python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`
+5. `uvicorn main:app --host 0.0.0.0 --port 8000`
 
 ---
 
 ## Security (demo limitations)
 
-- No authentication on `/ui/*` or decision APIs.
-- Docker Compose uses default Postgres credentials for local demo only.
-- Do not expose an unsecured instance to the public internet.
+- Bearer tokens are local demo credentials only — not production identity.
+- Never commit `.env.local`, `auth.tokens.local.json`, or real token values. Generated files are `chmod 600`.
+- Signal integration tokens are stored as plaintext in Postgres for this demo; reads are redacted (`has_bearer_token`, template credential lines masked). Do not embed secrets in header/body templates — use `bearer_token` only.
+- Postgres publishes on `127.0.0.1:5432` only; password is generated into `.env.local` (re-run `bash scripts/destroy.sh && bash scripts/run.sh` if you regenerate DB credentials).
+- Do not expose an instance to the public internet without real auth and secrets management.
 
 ---
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md) for milestone plan and known gaps (tenant-aware runtime, immutable versioning, CI, auth, etc.).
+See [ROADMAP.md](ROADMAP.md).
 
 ---
 
 ## Deployment
 
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for Docker Compose deployment and optional remote-host sync patterns.
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ---
 

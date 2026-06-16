@@ -1,25 +1,45 @@
-# OpenAPI specs
+# API documentation
 
-Hand-maintained API descriptions for the decision engine.
+OpenAPI is generated from the running FastAPI app:
 
-| File | Scope |
-|------|--------|
-| [`decision.yml`](decision.yml) | Public runtime API (`/checkpoints`, `/signals`, `/decisions`) |
-| [`admin.yml`](admin.yml) | Admin UI backend (`/ui/*`) |
+- Swagger UI: http://localhost:8000/docs
+- OpenAPI JSON: http://localhost:8000/openapi.json
 
-## Accuracy
+## Authentication
 
-These files are **not** auto-generated from FastAPI. Prefer the live app schema at `/docs` when in doubt.
+All runtime and admin routes require `Authorization: Bearer <token>`.
 
-Implemented admin convenience endpoints:
+Tokens are **not** stored in source code. Configure one of:
 
-- `GET /ui/all_tenants` — unpaginated tenant list
-- `GET /ui/all_checkpoints` — unpaginated checkpoint list (optional `tenant_id`, `active_only`)
-- `GET /ui/all_signals` — unpaginated signal list (optional `tenant_id`, `checkpoint_id`, `active_only`)
+- `DECISION_ENGINE_AUTH_TOKENS` — JSON object inline
+- `DECISION_ENGINE_AUTH_TOKENS_FILE` — path to JSON file
 
-Search and list endpoints return paginated envelopes: `{ "items", "total", "page", "size" }`. Some older paths in `admin.yml` still describe bare arrays for search responses; treat `/docs` as authoritative until those entries are refreshed.
+Generate local demo credentials:
 
-## TODO
+```sh
+bash scripts/create_demo_env.sh
+```
 
-- Align search response schemas in `admin.yml` with paginated responses
-- Consider generating OpenAPI from FastAPI in CI
+### Token map shape
+
+```json
+{
+  "RANDOM_RUNTIME_TOKEN": {
+    "tenant_id": "11111111-1111-1111-1111-111111111111",
+    "actor_id": "sample-lending-client",
+    "roles": ["runtime"]
+  },
+  "RANDOM_ADMIN_TOKEN": {
+    "tenant_id": null,
+    "actor_id": "admin-local",
+    "roles": ["admin"]
+  }
+}
+```
+
+- **runtime** tokens must include `tenant_id`.
+- **admin** tokens may omit `tenant_id` (cross-tenant admin UI access).
+- Runtime clients must not supply `tenant_id` / `tenant_name` on public APIs.
+- Admin test decisions use `POST /ui/test_decisions` so runtime tokens never reach the browser.
+
+Hand-maintained YAML under this directory was removed to avoid drift; use `/docs` as the source of truth.

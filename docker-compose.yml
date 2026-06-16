@@ -2,29 +2,34 @@ services:
   postgres:
     image: postgres:15
     container_name: decision-engine-db
+    env_file:
+      - .env.local
     environment:
       POSTGRES_DB: risk_engine_db
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./sql:/docker-entrypoint-initdb.d  # Mount the local directory into the container
+      - ./sql:/docker-entrypoint-initdb.d
 
   risk-engine:
     build: .
     container_name: decision-engine-app
     depends_on:
       - postgres
+    env_file:
+      - .env.local
     environment:
       DB_HOST: postgres
       DB_PORT: "5432"
       DB_NAME: risk_engine_db
       DB_USER: postgres
-      DB_PASSWORD: postgres
+      DECISION_ENGINE_AUTH_TOKENS_FILE: /app/auth.tokens.local.json
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./auth.tokens.local.json:/app/auth.tokens.local.json:ro
 
 volumes:
   postgres_data:

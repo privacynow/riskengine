@@ -1,11 +1,12 @@
-# Dockerfile for the Risk Engine
+# Dockerfile for Decision Engine
 FROM python:3.10-slim
 
 WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the entire app, including the ui directory
+# Copy application code only. Local secrets are excluded via .dockerignore
+# (auth.tokens.local.json, .env.local) and mounted at runtime by Compose.
 COPY . .
 
 # Expose port 8000 for the FastAPI server

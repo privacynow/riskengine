@@ -1,5 +1,37 @@
-// Import the SignalDetails component
-// import SignalDetails from './components/SignalDetails.vue';
+const AUTH_STORAGE_KEY = "decisionEngineAdminToken";
+
+function getStoredAdminToken() {
+  return sessionStorage.getItem(AUTH_STORAGE_KEY) || "";
+}
+
+function setStoredAdminToken(token) {
+  if (token) {
+    sessionStorage.setItem(AUTH_STORAGE_KEY, token);
+  } else {
+    sessionStorage.removeItem(AUTH_STORAGE_KEY);
+  }
+}
+
+function adminAuthHeaders(extra = {}) {
+  const token = getStoredAdminToken();
+  if (!token) {
+    return { ...extra };
+  }
+  return { Authorization: `Bearer ${token}`, ...extra };
+}
+
+function apiFetch(url, options = {}) {
+  return fetch(url, {
+    ...options,
+    headers: { ...adminAuthHeaders(), ...(options.headers || {}) },
+  });
+}
+
+function mountApp() {
+  if (!document.getElementById("app")) {
+    console.error("Decision Engine admin UI: #app mount point not found.");
+    return;
+  }
 
 new Vue({
   el: "#app",
@@ -8,6 +40,9 @@ new Vue({
     // Current view
     view: "home",
     isVueReady: false,
+    showAuthPrompt: true,
+    authTokenInput: "",
+    authError: "",
     showSignalConfirmation: false,
 
     // For version checking
@@ -319,7 +354,7 @@ new Vue({
     // UTILS
     //---------------------------------------
     fetchAllTenants() {
-      fetch("/ui/tenants?page=1&size=9999")
+      apiFetch("/ui/tenants?page=1&size=9999")
         .then(r => r.json())
         .then(data => {
           this.allTenants = data.items || [];
@@ -336,7 +371,7 @@ new Vue({
     fetchTenants(page) {
       this.tenantPage = page;
       const url = `/ui/tenants?page=${page}&size=${this.tenantSize}`;
-      fetch(url)
+      apiFetch(url)
         .then(r => r.json())
         .then(data => {
           this.tenants = data.items;
@@ -363,7 +398,7 @@ new Vue({
         return;
       }
       const url = `/ui/search_tenants?q=${q}&page=${page}&size=${this.tenantSize}`;
-      fetch(url)
+      apiFetch(url)
         .then(r => r.json())
         .then(data => {
           this.tenants = data.items;
@@ -377,7 +412,7 @@ new Vue({
         name: this.newTenantName,
         copyFromTenantId: this.copyFromTenantId 
       };
-      fetch("/ui/tenants", {
+      apiFetch("/ui/tenants", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -410,7 +445,7 @@ new Vue({
         copyFromTenantId: this.copyFromTenantId
       };
 
-      fetch(`/ui/tenants`, {
+      apiFetch(`/ui/tenants`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -451,7 +486,7 @@ new Vue({
           url += '&active_only=true';
         }
         
-      fetch(url)
+      apiFetch(url)
           .then(response => {
             if (!response.ok) {
               throw new Error('Failed to fetch checkpoints');
@@ -504,7 +539,7 @@ new Vue({
         url += '&active_only=true';
       }
 
-      fetch(url)
+      apiFetch(url)
         .then(r => r.json())
         .then(data => {
           this.checkpoints = data.items;
@@ -550,7 +585,7 @@ new Vue({
       this.expandedCheckpoints[cpId] = !this.expandedCheckpoints[cpId];
     },
     loadCheckpointAssociations(cpId) {
-      fetch(`/ui/signals?checkpoint_id=${cpId}&page=1&size=9999`)
+      apiFetch(`/ui/signals?checkpoint_id=${cpId}&page=1&size=9999`)
         .then(r => r.json())
         .then(data => {
           const items = data.items || [];
@@ -560,7 +595,7 @@ new Vue({
     },
     removeSignalAssociation(cpId, sigId) {
       // We'll fetch all checkpoint_signals then remove
-      fetch(`/ui/checkpoint_signals?page=1&size=9999`)
+      apiFetch(`/ui/checkpoint_signals?page=1&size=9999`)
         .then(r => r.json())
         .then(data => {
           const assoc = data.items.find(a => a.checkpoint_id === cpId && a.signal_id === sigId);
@@ -568,7 +603,7 @@ new Vue({
             alert("Association not found. Possibly already removed.");
             return;
           }
-          return fetch(`/ui/checkpoint_signals/${assoc.id}`, { method: "DELETE" });
+          return apiFetch(`/ui/checkpoint_signals/${assoc.id}`, { method: "DELETE" });
         })
         .then(resp => {
           if (!resp) return;
@@ -591,7 +626,7 @@ new Vue({
         name: checkpoint.name
       };
 
-      fetch(`/ui/checkpoints/${cpId}`, {
+      apiFetch(`/ui/checkpoints/${cpId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -669,7 +704,7 @@ new Vue({
       // First check if a checkpoint with this name already exists
       const url = `/ui/search_checkpoints?q=${encodeURIComponent(this.newCheckpointData.name)}&tenant_id=${this.checkpointsTenantFilter}&page=1&size=1`;
       
-      fetch(url)
+      apiFetch(url)
         .then(r => {
           if (!r.ok) {
             return r.text().then(text => { throw new Error(text); });
@@ -687,7 +722,7 @@ new Vue({
             throw 'checkpoint_exists';
           }
           
-          return fetch("/ui/checkpoints", {
+          return apiFetch("/ui/checkpoints", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
@@ -734,7 +769,7 @@ new Vue({
         signals: this.newCheckpointData.associatedSignals.map(s => s.id)
       };
       
-      fetch("/ui/checkpoints", {
+      apiFetch("/ui/checkpoints", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -809,7 +844,7 @@ new Vue({
       
       const url = `/ui/search_signals?${params.toString()}`;
       
-      fetch(url)
+      apiFetch(url)
         .then(response => {
           if (!response.ok) {
             return response.text().then(text => {
@@ -864,7 +899,7 @@ new Vue({
       
       const url = `/ui/signals?${params.toString()}`;
       
-      fetch(url)
+      apiFetch(url)
         .then(response => {
           if (!response.ok) {
             return response.text().then(text => {
@@ -916,7 +951,7 @@ new Vue({
         checkpoint_id: this.createdCheckpointId,
         signal_id: signalId
       };
-      fetch("/ui/checkpoint_signals", {
+      apiFetch("/ui/checkpoint_signals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -944,7 +979,7 @@ new Vue({
       if (this.signalsActiveFilter === 'active') {
         url += '&active_only=true';
       }
-      fetch(url)
+      apiFetch(url)
         .then(r => r.json())
         .then(data => {
           this.checkpointSignalCandidates[cpId] = data.items || [];
@@ -965,7 +1000,7 @@ new Vue({
       if (this.signalsActiveFilter === 'active') {
         url += '&active_only=true';
       }
-      fetch(url)
+      apiFetch(url)
         .then(r => r.json())
         .then(data => {
           this.checkpointSignalCandidates[cpId] = data.items || [];
@@ -995,7 +1030,7 @@ new Vue({
     },
     associateSignalToCheckpoint(cpId, sigId) {
       const payload = { checkpoint_id: cpId, signal_id: sigId };
-      fetch("/ui/checkpoint_signals", {
+      apiFetch("/ui/checkpoint_signals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -1034,7 +1069,7 @@ new Vue({
         params.append('active_only', 'true');
       }
       
-      fetch(`/ui/signals?${params.toString()}`)
+      apiFetch(`/ui/signals?${params.toString()}`)
         .then(response => {
           if (!response.ok) {
             return response.text().then(text => {
@@ -1097,7 +1132,7 @@ new Vue({
       if (this.signalsActiveFilter === 'active') {
         url += '&active_only=true';
       }
-      fetch(url)
+      apiFetch(url)
         .then(response => {
           if (!response.ok) {
             return response.text().then(text => {
@@ -1142,11 +1177,11 @@ new Vue({
       }
     },
     loadSignalAssociations(sid) {
-      fetch(`/ui/checkpoints?page=1&size=9999`)
+      apiFetch(`/ui/checkpoints?page=1&size=9999`)
         .then(r => r.json())
         .then(data => {
           const allCps = data.items;
-          return fetch(`/ui/checkpoint_signals?page=1&size=9999`).then(r => r.json()).then(assocData => {
+          return apiFetch(`/ui/checkpoint_signals?page=1&size=9999`).then(r => r.json()).then(assocData => {
             const relevant = assocData.items.filter(a => a.signal_id === sid);
             const cpIds = relevant.map(r => r.checkpoint_id);
             const associatedCps = allCps.filter(cp => cpIds.includes(cp.id));
@@ -1156,7 +1191,7 @@ new Vue({
         .catch(err => console.error("Error loading signal associations:", err));
     },
     removeCheckpointAssociation(sigId, cpId) {
-      fetch(`/ui/checkpoint_signals?page=1&size=9999`)
+      apiFetch(`/ui/checkpoint_signals?page=1&size=9999`)
         .then(r => r.json())
         .then(data => {
           const assoc = data.items.find(a => a.signal_id === sigId && a.checkpoint_id === cpId);
@@ -1164,7 +1199,7 @@ new Vue({
             alert("Association not found.");
             return;
           }
-          return fetch(`/ui/checkpoint_signals/${assoc.id}`, { method: "DELETE" });
+          return apiFetch(`/ui/checkpoint_signals/${assoc.id}`, { method: "DELETE" });
         })
         .then(resp => {
           if (!resp) return;
@@ -1186,7 +1221,7 @@ new Vue({
         ...this.newSignalData
       };
 
-      fetch("/ui/signals", {
+      apiFetch("/ui/signals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -1253,13 +1288,16 @@ new Vue({
         request_url_params_template: signal.request_url_params_template || "",
         request_body_template: signal.request_body_template || "",
         request_headers_template: signal.request_headers_template || "",
-        bearer_token: signal.bearer_token || "",
         allow_caching: signal.allow_caching || false,
         global_reuse: signal.global_reuse || false,
         function_params_template: signal.function_params_template || ""
       };
+      const tokenInput = (this.signalEdits[signalId].bearer_token_input || "").trim();
+      if (tokenInput) {
+        payload.bearer_token = tokenInput;
+      }
 
-      fetch(`/ui/signals`, {
+      apiFetch(`/ui/signals`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -1287,7 +1325,7 @@ new Vue({
         return;
       }
       const url = `/ui/search_checkpoints?q=${q}&page=${page}&size=${this.signalCheckpointCandidateSize}`;
-      fetch(url)
+      apiFetch(url)
         .then(r => r.json())
         .then(data => {
           this.signalCheckpointCandidates[sid] = data.items || [];
@@ -1305,7 +1343,7 @@ new Vue({
     loadAllCheckpointsForSignalEdit(sid, page) {
       this.signalCheckpointCandidatePage[sid] = page;
       const url = `/ui/checkpoints?page=${page}&size=${this.signalCheckpointCandidateSize}`;
-      fetch(url)
+      apiFetch(url)
         .then(r => r.json())
         .then(data => {
           this.signalCheckpointCandidates[sid] = data.items || [];
@@ -1338,7 +1376,7 @@ new Vue({
     },
     associateCheckpointToSignal(sid, cpId) {
       const payload = { checkpoint_id: cpId, signal_id: sid };
-      fetch("/ui/checkpoint_signals", {
+      apiFetch("/ui/checkpoint_signals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -1366,7 +1404,7 @@ new Vue({
         return;
       }
       const url = `/ui/search_checkpoints?q=${q}&page=${page}&size=${this.assocCheckpointSize}`;
-      fetch(url)
+      apiFetch(url)
         .then(r => r.json())
         .then(data => {
           let filtered = data.items;
@@ -1386,7 +1424,7 @@ new Vue({
     loadAllAssocCheckpoints(page) {
       this.assocCheckpointPage = page;
       let url = `/ui/checkpoints?page=${page}&size=${this.assocCheckpointSize}`;
-      fetch(url)
+      apiFetch(url)
         .then(r => r.json())
         .then(data => {
           let filtered = data.items;
@@ -1407,7 +1445,7 @@ new Vue({
       this.expandedAssocCheckpoint[cpId] = !this.expandedAssocCheckpoint[cpId];
     },
     loadAssocCheckpointMap(cpId) {
-      fetch(`/ui/signals?checkpoint_id=${cpId}&page=1&size=9999`)
+      apiFetch(`/ui/signals?checkpoint_id=${cpId}&page=1&size=9999`)
         .then(r => r.json())
         .then(data => {
           if (!this.assocCheckpointMap[cpId]) {
@@ -1446,7 +1484,7 @@ new Vue({
       if (this.signalsActiveFilter === 'active') {
         url += '&active_only=true';
       }
-      fetch(url)
+      apiFetch(url)
         .then(r => r.json())
         .then(data => {
           let filtered = data.items;
@@ -1471,7 +1509,7 @@ new Vue({
       if (this.signalsActiveFilter === 'active') {
         url += '&active_only=true';
       }
-      fetch(url)
+      apiFetch(url)
         .then(r => r.json())
         .then(data => {
           let filtered = data.items;
@@ -1524,7 +1562,7 @@ new Vue({
       if (this.signalsActiveFilter === 'active') {
         url += '&active_only=true';
       }
-      fetch(url)
+      apiFetch(url)
         .then(r => r.json())
         .then(data => {
           let filtered = data.items;
@@ -1547,7 +1585,7 @@ new Vue({
       if (this.signalsActiveFilter === 'active') {
         url += '&active_only=true';
       }
-      fetch(url)
+      apiFetch(url)
         .then(r => r.json())
         .then(data => {
           let filtered = data.items;
@@ -1568,11 +1606,11 @@ new Vue({
       this.expandedAssocSignal[sid] = !this.expandedAssocSignal[sid];
     },
     loadAssocSignalMap(sid) {
-      fetch(`/ui/checkpoints?page=1&size=9999`)
+      apiFetch(`/ui/checkpoints?page=1&size=9999`)
         .then(r => r.json())
         .then(data => {
           const allCps = data.items;
-          return fetch(`/ui/checkpoint_signals?page=1&size=9999`).then(r => r.json()).then(assocData => {
+          return apiFetch(`/ui/checkpoint_signals?page=1&size=9999`).then(r => r.json()).then(assocData => {
             const relevant = assocData.items.filter(a => a.signal_id === sid);
             const cpIds = relevant.map(r => r.checkpoint_id);
             const associated = allCps.filter(cp => cpIds.includes(cp.id));
@@ -1610,7 +1648,7 @@ new Vue({
         return;
       }
       const url = `/ui/search_checkpoints?q=${encodeURIComponent(q)}&page=${page}&size=${this.assocSignalCandidateSize}`;
-      fetch(url)
+      apiFetch(url)
         .then(r => r.json())
         .then(data => {
           let filtered = data.items;
@@ -1632,7 +1670,7 @@ new Vue({
     loadAllCheckpointsToAssociate(sid, page) {
       this.assocSignalCandidatePage[sid] = page;
       const url = `/ui/checkpoints?page=${page}&size=${this.assocSignalCandidateSize}`;
-      fetch(url)
+      apiFetch(url)
         .then(r => r.json())
         .then(data => {
           let filtered = data.items;
@@ -1705,7 +1743,7 @@ new Vue({
       // Tenants
       if (this.searchEntityType === "tenants" || this.searchEntityType === "all") {
         const url = `/ui/search_tenants?q=${qEnc}&page=${this.tenantSearchPage}&size=${this.tenantSearchSize}`;
-        fetch(url)
+        apiFetch(url)
           .then(r => r.json())
           .then(data => {
             this.searchTenantsResults = data.items;
@@ -1720,7 +1758,7 @@ new Vue({
       // Checkpoints
       if (this.searchEntityType === "checkpoints" || this.searchEntityType === "all") {
         const url = `/ui/search_checkpoints?q=${qEnc}&page=${this.checkpointSearchPage}&size=${this.checkpointSearchSize}`;
-        fetch(url)
+        apiFetch(url)
           .then(r => r.json())
           .then(data => {
             this.searchCheckpointsResults = data.items;
@@ -1738,7 +1776,7 @@ new Vue({
       // Signals
       if (this.searchEntityType === "signals" || this.searchEntityType === "all") {
         const url = `/ui/search_signals?q=${qEnc}&page=${this.signalSearchPage}&size=${this.signalSearchSize}`;
-        fetch(url)
+        apiFetch(url)
           .then(r => r.json())
           .then(data => {
             this.searchSignalsResults = data.items;
@@ -1762,7 +1800,7 @@ new Vue({
         if (this.decisionSearchToDate) {
           url += `&to_date=${encodeURIComponent(this.decisionSearchToDate)}`;
         }
-        fetch(url)
+        apiFetch(url)
           .then(r => r.json())
           .then(data => {
             this.searchDecisionsResults = data.items;
@@ -1776,7 +1814,7 @@ new Vue({
       // Signal logs
       if (this.searchEntityType === "signal_logs") {
         let url = `/ui/search_signal_logs?q=${qEnc}&page=${this.signalLogsSearchPage}&size=${this.signalLogsSearchSize}`;
-        fetch(url)
+        apiFetch(url)
           .then(r => r.json())
           .then(data => {
             this.searchSignalLogsResults = data.items;
@@ -1861,7 +1899,7 @@ new Vue({
     },
     saveSearchTenant(tid) {
       const e = this.searchTenantEdits[tid];
-      fetch(`/ui/tenants/${tid}`, {
+      apiFetch(`/ui/tenants/${tid}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: e.name })
@@ -1884,7 +1922,7 @@ new Vue({
     },
     saveSearchCheckpoint(cpId) {
       const e = this.searchCheckpointEdits[cpId];
-      fetch(`/ui/checkpoints/${cpId}`)
+      apiFetch(`/ui/checkpoints/${cpId}`)
         .then(r => r.json())
         .then(found => {
           const payload = {
@@ -1898,7 +1936,7 @@ new Vue({
             override_cost_flag: found.override_cost_flag,
             timeout_seconds: found.timeout_seconds
           };
-          return fetch(`/ui/checkpoints/${cpId}`, {
+          return apiFetch(`/ui/checkpoints/${cpId}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
@@ -1922,7 +1960,7 @@ new Vue({
     },
     saveSearchSignal(sid) {
       const e = this.searchSignalEdits[sid];
-      fetch(`/ui/signals/${sid}`)
+      apiFetch(`/ui/signals/${sid}`)
         .then(r => r.json())
         .then(original => {
           const payload = {
@@ -1941,14 +1979,13 @@ new Vue({
             request_url_params_template: original.request_url_params_template,
             request_body_template: original.request_body_template,
             request_headers_template: original.request_headers_template,
-            bearer_token: original.bearer_token,
             allow_caching: original.allow_caching,
             global_reuse: original.global_reuse,
             function_params_template: original.function_params_template,
             makeCurrentVersion: this.makeCurrentVersion
           };
-          return fetch(`/ui/signals/${sid}`, {
-            method: "PUT",
+          return apiFetch("/ui/signals", {
+            method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
           });
@@ -1976,7 +2013,7 @@ new Vue({
       }
     },
     fetchDecisionDetails(decisionId) {
-      fetch(`/decisions/${decisionId}`)
+      apiFetch(`/decisions/${decisionId}`)
         .then(async r => {
           if (!r.ok) {
             const txt = await r.text();
@@ -2010,7 +2047,7 @@ new Vue({
         return;
       }
       const url = `/ui/search_checkpoints?q=${q}&page=${page}&size=${this.testDecCheckpointSize}`;
-      fetch(url)
+      apiFetch(url)
         .then(r => r.json())
         .then(data => {
           let filtered = data.items;
@@ -2029,7 +2066,7 @@ new Vue({
     loadAllTestDecCheckpoints(page) {
       this.testDecCheckpointPage = page;
       let url = `/ui/checkpoints?page=${page}&size=${this.testDecCheckpointSize}`;
-      fetch(url)
+      apiFetch(url)
         .then(r => r.json())
         .then(data => {
           let filtered = data.items;
@@ -2054,7 +2091,7 @@ new Vue({
     loadTestDecCheckpointSignals(cpId) {
       // Get signals for this checkpoint
       const url = `/ui/signals?checkpoint_id=${cpId}&page=1&size=9999`;
-      fetch(url)
+      apiFetch(url)
         .then(r => r.json())
         .then(data => {
           const signals = data.items || [];
@@ -2117,13 +2154,14 @@ new Vue({
       });
 
       const payload = {
+        tenant_id: cp.tenant_id,
         checkpoint_name: cp.name,
         applicant_id: applicantId,
         correlation_id: correlationId,
         parameters: paramMap
       };
 
-      fetch("/decisions", {
+      apiFetch("/ui/test_decisions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -2198,7 +2236,7 @@ new Vue({
         url.searchParams.set('tenant_id', this.checkpointsTenantFilter);
       }
       
-      fetch(url)
+      apiFetch(url)
         .then(response => response.json())
         .then(data => {
           this.checkpoints = data.items;
@@ -2220,7 +2258,7 @@ new Vue({
         checkpoint_id: checkpointId
       };
 
-      fetch(`/ui/checkpoints/${checkpointId}/make_current`, {
+      apiFetch(`/ui/checkpoints/${checkpointId}/make_current`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -2360,7 +2398,7 @@ new Vue({
         makeCurrentVersion: checkpoint.makeCurrentVersion
       };
 
-      fetch(`/ui/checkpoints/${id}`, {
+      apiFetch(`/ui/checkpoints/${id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -2389,7 +2427,7 @@ new Vue({
       if (this.signalsActiveFilter === 'active') {
         url += '&active_only=true';
       }
-      fetch(url)
+      apiFetch(url)
         .then(response => {
           if (!response.ok) {
             return response.text().then(text => {
@@ -2442,7 +2480,7 @@ new Vue({
       const signal = this.signals.find(s => s.id === signalId);
       if (!signal) return;
 
-      fetch(`/ui/signals/${signalId}/toggle_active`, {
+      apiFetch(`/ui/signals/${signalId}/toggle_active`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2466,11 +2504,59 @@ new Vue({
         alert('Error setting current version: ' + error.message);
       });
     },
+    bootstrapApp() {
+      this.showAuthPrompt = false;
+      this.fetchAllTenants();
+      this.fetchCheckpoints(1);
+      this.isVueReady = true;
+    },
+    submitAuthToken() {
+      const token = this.authTokenInput.trim();
+      if (!token) {
+        this.authError = "Enter a bearer token.";
+        return;
+      }
+      setStoredAdminToken(token);
+      this.authError = "";
+      apiFetch("/ui/tenants?page=1&size=1")
+        .then(async (response) => {
+          if (!response.ok) {
+            const text = await response.text();
+            throw new Error(text || "Admin token rejected.");
+          }
+          this.showAuthPrompt = false;
+          this.bootstrapApp();
+        })
+        .catch((err) => {
+          console.error(err);
+          setStoredAdminToken("");
+          this.authError = "Admin token rejected. Use the token from your local .env.local.";
+          this.showAuthPrompt = true;
+        });
+    },
+    clearAuthToken() {
+      setStoredAdminToken("");
+      this.authTokenInput = "";
+      this.showAuthPrompt = true;
+      this.isVueReady = false;
+    },
   },
   mounted() {
-    this.fetchAllTenants();
-    this.fetchCheckpoints(1);
-    this.isVueReady = true;
+    if (getStoredAdminToken()) {
+      apiFetch("/ui/tenants?page=1&size=1")
+        .then(async (response) => {
+          if (!response.ok) {
+            throw new Error("Stored admin token rejected.");
+          }
+          this.bootstrapApp();
+        })
+        .catch(() => {
+          setStoredAdminToken("");
+          this.showAuthPrompt = true;
+        });
+    } else {
+      this.showAuthPrompt = true;
+    }
   },
   watch: {
     checkpointsTenantFilter(newVal, oldVal) {
@@ -2494,3 +2580,10 @@ new Vue({
     }
   }
 });
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", mountApp);
+} else {
+  mountApp();
+}

@@ -2,14 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Risk Decision Engine Admin</title>
+  <title>Decision Engine Admin</title>
   <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
   <!-- Load Vue and dependencies before the app (vendored locally; see ui/vendor/README.md) -->
   <script src="vendor/vue.min.js"></script>
   <script src="vendor/httpVueLoader.min.js"></script>
-  <!-- v-cloak must be first to prevent flash -->
   <style>
-    [v-cloak] {
+    .app-main[v-cloak] {
       display: none !important;
     }
   </style>
@@ -773,7 +772,13 @@
   </style>
 
   <style>
-    /* ... existing styles ... */
+    .demo-banner {
+      background: #fff3cd;
+      border-bottom: 1px solid #f0d58c;
+      color: #664d03;
+      padding: 10px 20px;
+      font-size: 0.92em;
+    }
 
     .clickable-icon {
       cursor: pointer;
@@ -792,15 +797,9 @@
     .clickable-icon i.fa-star {
       color: #FFC107;
     }
-
-    /* ... rest of existing styles ... */
   </style>
 
-  <!-- Add styles in the head section -->
   <style>
-  /* ... existing styles ... */
-
-  /* Signal Form Styles */
   .signal-form {
     padding: 20px;
     background: #fff;
@@ -1217,8 +1216,9 @@
       </div>
 
       <div class="form-field">
-        <label>Bearer Token:</label>
-        <input type="text" v-model="formData.bearer_token">
+        <label>Outbound bearer token (optional):</label>
+        <input type="password" v-model="formData.bearer_token" autocomplete="off" placeholder="Set or replace integration token">
+        <small>Stored server-side only. Leave blank to keep an existing token unchanged.</small>
       </div>
 
       <div class="form-field">
@@ -1484,7 +1484,8 @@ Vue.component('signal-list', {
               request_url_params_template: signal.request_url_params_template,
               request_body_template: signal.request_body_template,
               request_headers_template: signal.request_headers_template,
-              bearer_token: signal.bearer_token,
+              has_bearer_token: !!signal.has_bearer_token,
+              bearer_token_input: '',
               allow_caching: signal.allow_caching,
               global_reuse: signal.global_reuse,
               function_params_template: signal.function_params_template,
@@ -1524,13 +1525,37 @@ Vue.component('signal-list', {
   }
 });
 
-// ... existing code ...
 </script>
 
-<div id="app" v-cloak>
+<div id="app">
+  <div class="app-shell">
+  <div v-if="showAuthPrompt" class="modal auth-modal">
+    <div class="modal-content">
+      <h3>Local Demo Admin Login</h3>
+      <p style="color:#666;">
+        This UI is a local-only demo shell. Enter the admin bearer token from your local
+        <code>.env.local</code> (generate with <code>bash scripts/create_demo_env.sh</code>).
+        Tokens are stored in this browser session only.
+      </p>
+      <div class="form-group">
+        <label>Admin bearer token</label>
+        <input type="password" v-model="authTokenInput" class="form-control" placeholder="Paste admin token" @keyup.enter="submitAuthToken">
+      </div>
+      <p v-if="authError" style="color:#b42318;">{{ authError }}</p>
+      <div class="form-actions">
+        <button class="btn btn-primary" @click="submitAuthToken">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <div v-if="isVueReady" class="app-main" v-cloak>
+  <div class="demo-banner">
+    Local demo only. Admin access requires a bearer token at login; do not expose this UI publicly without real auth.
+    <button class="btn secondary" style="float:right; padding:2px 8px;" @click="clearAuthToken">Sign out</button>
+  </div>
   <header>
     <img src="assets/favicon.svg" alt="" class="brand-icon" />
-    <h1>Risk Decision Engine Admin</h1>
+    <h1>Decision Engine Admin</h1>
   </header>
 
   <div class="nav-bar">
@@ -1550,12 +1575,12 @@ Vue.component('signal-list', {
     <div v-if="view === 'home'">
       <div class="section-title">
         <svg class="section-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 3l9 8v10h-6v-6H9v6H3V11l9-8z"/></svg>
-        <span>Welcome to the Risk Engine Admin</span>
+        <span>Welcome to Decision Engine Admin</span>
       </div>
       <div class="panel" style="line-height:1.6;">
         <h3>Overview</h3>
         <p>
-          This application manages a data driven Risk Decision Engine. It allows you to:
+          This application manages a configurable Decision Engine. It allows you to:
         </p>
         <ul>
           <li><strong>Configure Tenants</strong>: Different organizations or lines of business.</li>
@@ -2898,45 +2923,6 @@ Vue.component('signal-list', {
     </div>
   </div>
 
-  <!-- Signal Create Form Dialog -->
-  <div v-if="showSignalCreateForm" class="modal">
-    <div class="modal-content">
-      <h3>Create Signal</h3>
-      <div class="form-group">
-        <label>Name:</label>
-        <input type="text" v-model="newSignalName" class="form-control">
-      </div>
-      <div class="form-group">
-        <label>Description:</label>
-        <textarea v-model="newSignalDescription" class="form-control"></textarea>
-      </div>
-      <div class="form-group">
-        <label>Type:</label>
-        <select v-model="newSignalType" class="form-control">
-          <option value="variable">Variable</option>
-          <option value="function">Function</option>
-          <option value="http">HTTP</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Method of Call:</label>
-        <input type="text" v-model="newSignalMethodOfCall" class="form-control">
-      </div>
-      <div class="form-group">
-        <label>Cost:</label>
-        <input type="number" v-model="newSignalCost" class="form-control">
-      </div>
-      <div class="form-group">
-        <label>Make Current Version:</label>
-        <input type="checkbox" v-model="makeCurrentVersion">
-      </div>
-      <div class="form-actions">
-        <button @click="createSignal" class="btn btn-primary">Create</button>
-        <button @click="showSignalCreateForm = false" class="btn">Cancel</button>
-      </div>
-    </div>
-  </div>
-
   <!-- Signal Create Confirmation Dialog -->
   <div v-if="showSignalConfirmation" class="modal">
     <div class="modal-content">
@@ -2955,6 +2941,8 @@ Vue.component('signal-list', {
         <button @click="cancelSignalCreation" class="btn">Cancel</button>
       </div>
     </div>
+  </div>
+  </div>
   </div>
 </div>
 

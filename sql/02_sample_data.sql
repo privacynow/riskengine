@@ -303,7 +303,7 @@ SELECT
   NULL,
   '{"documentType": "ID", "userId": "%applicant_id%"}',
   NULL,
-  'EXAMPLE-INTERNAL-TOKEN-NOT-REAL',
+  NULL,
   TRUE,
   FALSE,
   NULL
@@ -338,7 +338,7 @@ SELECT
   'userId=%applicant_id%',
   NULL,
   NULL,
-  'EXAMPLE-SANCTION-TOKEN-NOT-REAL',
+  NULL,
   TRUE,
   TRUE,
   NULL
@@ -373,7 +373,7 @@ SELECT
   'ssn=%user_ssn%',
   NULL,
   NULL,
-  'EXAMPLE-KYC-TOKEN-NOT-REAL',
+  NULL,
   TRUE,
   FALSE,
   NULL
@@ -408,7 +408,7 @@ SELECT
   NULL,
   '{"ssn": "%user_ssn%"}',
   NULL,
-  'EXAMPLE-CREDIT-TOKEN-NOT-REAL',
+  NULL,
   TRUE,
   FALSE,
   NULL
@@ -795,6 +795,47 @@ WHERE NOT EXISTS (
 );
 
 ---------------------------------------
+-- 5b) Second tenant — same checkpoint name, different outcome (multi-tenant demo)
+---------------------------------------
+INSERT INTO tenants (id, name)
+SELECT '99999999-9999-9999-9999-999999999999', 'OTHER BANK'
+WHERE NOT EXISTS (
+  SELECT 1 FROM tenants WHERE name = 'OTHER BANK'
+);
+
+INSERT INTO checkpoints (
+    id, tenant_id, name, description, type, dsl_expression, method_of_call,
+    max_cost, override_cost_flag, timeout_seconds
+)
+SELECT
+  '88888888-8888-8888-8888-888888888801',
+  '99999999-9999-9999-9999-999999999999',
+  'Onboarding',
+  'Always-decline onboarding checkpoint for multi-tenant demos.',
+  'onboarding',
+  'False',
+  NULL,
+  100,
+  FALSE,
+  30
+WHERE NOT EXISTS (
+  SELECT 1 FROM checkpoints
+   WHERE name = 'Onboarding'
+     AND tenant_id = '99999999-9999-9999-9999-999999999999'
+);
+
+INSERT INTO checkpoint_current_version (tenant_id, name, checkpoint_id)
+SELECT
+  '99999999-9999-9999-9999-999999999999',
+  'Onboarding',
+  '88888888-8888-8888-8888-888888888801'
+WHERE NOT EXISTS (
+  SELECT 1 FROM checkpoint_current_version
+   WHERE tenant_id = '99999999-9999-9999-9999-999999999999'
+     AND name = 'Onboarding'
+);
+
+---------------------------------------
 -- 6) Seed current-version pointers for sample checkpoints and signals
 ---------------------------------------
 INSERT INTO checkpoint_current_version (tenant_id, name, checkpoint_id)
@@ -833,4 +874,41 @@ SELECT
 WHERE NOT EXISTS (
   SELECT 1 FROM decision_log
    WHERE id = '44444444-4444-4444-4444-444444444444'
+);
+
+---------------------------------------
+-- 7) Inactive signal — linked but not current (strict resolution demo)
+-- Inserted after current-version seed so it is deliberately excluded.
+---------------------------------------
+INSERT INTO signals (
+    id, tenant_id, name, description, type, method_of_call,
+    expression_body, cost, cache_expiration_seconds, timeout_seconds,
+    can_run_in_parallel, order_of_evaluation
+)
+SELECT
+  '77777777-7777-7777-7777-777777777701',
+  '11111111-1111-1111-1111-111111111111',
+  'inactive_demo',
+  'Linked to Onboarding but not in signal_current_version; must not execute.',
+  'expression',
+  NULL,
+  'False',
+  1,
+  0,
+  30,
+  FALSE,
+  99
+WHERE NOT EXISTS (
+  SELECT 1 FROM signals WHERE id = '77777777-7777-7777-7777-777777777701'
+);
+
+INSERT INTO checkpoint_signals (id, checkpoint_id, signal_id)
+SELECT
+  '77777777-7777-7777-7777-777777777702',
+  '22222222-2222-2222-2222-222222222201',
+  '77777777-7777-7777-7777-777777777701'
+WHERE NOT EXISTS (
+  SELECT 1 FROM checkpoint_signals
+   WHERE checkpoint_id = '22222222-2222-2222-2222-222222222201'
+     AND signal_id = '77777777-7777-7777-7777-777777777701'
 );
