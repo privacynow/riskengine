@@ -1,5 +1,6 @@
 import asyncio
 import os
+import uuid
 
 import pytest
 
@@ -21,7 +22,7 @@ def _expression_signal(
     cost: int = 1,
 ) -> ExecutableSignalRow:
     return ExecutableSignalRow(
-        id=f"id-{name}",
+        id=str(uuid.uuid5(uuid.NAMESPACE_OID, f"test-signal-{name}")),
         name=name,
         type="expression",
         method_of_call=None,
@@ -48,6 +49,12 @@ def _expression_signal(
     reason="Integration tests require Postgres (set DB_HOST or RUN_INTEGRATION_TESTS=1)",
 )
 class TestDecisionOrchestration:
+    @pytest.fixture(autouse=True)
+    def noop_signal_log_persist(self, monkeypatch):
+        from engine.services import decision as decision_mod
+
+        monkeypatch.setattr(decision_mod, "persist_signal_logs", lambda cur, items: None)
+
     def test_expression_signal_receives_request_params(self, monkeypatch):
         from engine.db import get_db_connection
         from engine.services import decision as decision_mod
@@ -229,14 +236,11 @@ class TestDecisionOrchestration:
         from engine.services import decision as decision_mod
 
         captured: list[dict] = []
-        original_put = decision_mod.log_queue.put
 
-        async def capture_put(item):
-            if item is not None:
-                captured.append(item)
-            return await original_put(item)
+        def capture_persist(cur, items):
+            captured.extend(items)
 
-        monkeypatch.setattr(decision_mod.log_queue, "put", capture_put)
+        monkeypatch.setattr(decision_mod, "persist_signal_logs", capture_persist)
         monkeypatch.setattr(
             decision_mod,
             "fetch_executable_signal_rows",
@@ -290,12 +294,9 @@ class TestDecisionOrchestration:
         from engine.services import decision as decision_mod
 
         captured: list[dict] = []
-        original_put = decision_mod.log_queue.put
 
-        async def capture_put(item):
-            if item is not None:
-                captured.append(item)
-            return await original_put(item)
+        def capture_persist(cur, items):
+            captured.extend(items)
 
         async def fake_invoke(*, expression_body, **kwargs):
             if expression_body == "slow":
@@ -304,7 +305,7 @@ class TestDecisionOrchestration:
                 await asyncio.sleep(0.05)
             return True
 
-        monkeypatch.setattr(decision_mod.log_queue, "put", capture_put)
+        monkeypatch.setattr(decision_mod, "persist_signal_logs", capture_persist)
         monkeypatch.setattr(decision_mod, "invoke_signal", fake_invoke)
         monkeypatch.setattr(
             decision_mod,
@@ -368,4 +369,5 @@ class TestDecisionOrchestration:
         timeout_logs = [
             item for item in captured if item.get("error_message") == "checkpoint_timeout"
         ]
-        assert [item["signal_id"] for item in timeout_logs] == ["id-slow_signal"]
+        slow_id = str(uuid.uuid5(uuid.NAMESPACE_OID, "test-signal-slow_signal"))
+        assert [item["signal_id"] for item in timeout_logs] == [slow_id]

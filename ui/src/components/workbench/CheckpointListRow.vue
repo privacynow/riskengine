@@ -51,7 +51,12 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { Checkpoint } from "@/api/types";
-import { canPromoteVersion, canReactivateVersion, formatEvalTimeout, formatFlowCostCap } from "@/api/formatters";
+import {
+  canPromoteVersion,
+  canReactivateVersion,
+  formatCheckpointCostCap,
+  formatEvalTimeout,
+} from "@/api/formatters";
 import Icon from "@/components/primitives/Icon.vue";
 import StatusBadge from "@/components/workbench/StatusBadge.vue";
 
@@ -94,7 +99,7 @@ const metaLine = computed(() => {
   return parts.join(" · ");
 });
 
-const capLabel = computed(() => formatFlowCostCap(props.checkpoint.max_cost));
+const capLabel = computed(() => formatCheckpointCostCap(props.checkpoint.max_cost));
 
 const timeoutLabel = computed(() => formatEvalTimeout(props.checkpoint.timeout_seconds));
 </script>

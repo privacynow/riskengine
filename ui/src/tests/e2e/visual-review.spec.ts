@@ -196,7 +196,7 @@ test.describe("visual review — workbench", () => {
     await assertWorkbenchDetailHeader(page);
   });
 
-  test("flows desktop", async ({ page }) => {
+  test("checkpoints desktop", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await prepareCheckpointsView(page);
     await page.waitForTimeout(300);
@@ -204,10 +204,10 @@ test.describe("visual review — workbench", () => {
     await assertSingleActiveNav(page, CHECKPOINTS_NAV);
     await assertWorkbenchListRows(page, ".checkpoints-view");
     await assertNoHorizontalOverflow(page);
-    await expect(page.locator(".checkpoints-view")).toHaveScreenshot("flows-desktop.png");
+    await expect(page.locator(".checkpoints-view")).toHaveScreenshot("checkpoints-desktop.png");
   });
 
-  test("flows mobile", async ({ page }) => {
+  test("checkpoints mobile", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await prepareCheckpointsView(page);
     await page.waitForTimeout(300);
@@ -219,7 +219,7 @@ test.describe("visual review — workbench", () => {
     await assertNoHorizontalOverflow(page);
     const listCard = page.locator(".checkpoints-view .workbench-list-card");
     await expect(listCard).toBeVisible();
-    await expect(listCard).toHaveScreenshot("flows-mobile-390.png");
+    await expect(listCard).toHaveScreenshot("checkpoints-mobile-390.png");
   });
 
   test("promote does not open row on Space", async ({ page }) => {

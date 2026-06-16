@@ -307,7 +307,7 @@ SELECT
   '33333333-3333-3333-3333-333333333305',
   '11111111-1111-1111-1111-111111111111',
   'doc_verification',
-  'Internal doc verification (POST with user data)',
+  'Document authenticity verified via internal POST service with applicant profile payload.',
   'internal_endpoint',
   'http://127.0.0.1:8000/mock/doc-verify',
   NULL,
@@ -342,7 +342,7 @@ SELECT
   '33333333-3333-3333-3333-333333333306',
   '11111111-1111-1111-1111-111111111111',
   'sanction_screening',
-  'Internal sanction screening (GET with query param)',
+  'Sanctions and PEP screening via internal GET service with applicant identifier.',
   'internal_endpoint',
   'http://127.0.0.1:8000/mock/sanction-screen',
   NULL,
@@ -377,7 +377,7 @@ SELECT
   '33333333-3333-3333-3333-333333333307',
   '11111111-1111-1111-1111-111111111111',
   'kyc_score',
-  'External endpoint returning user KYC score (0-100)',
+  'Know-your-customer composite score (0–100) from external identity bureau.',
   'external_endpoint',
   'http://127.0.0.1:8000/mock/kyc_score',
   NULL,
@@ -412,7 +412,7 @@ SELECT
   '33333333-3333-3333-3333-333333333308',
   '11111111-1111-1111-1111-111111111111',
   'credit_score',
-  'External endpoint returning credit score (0-100)',
+  'Primary bureau credit score (300–850) from external credit pull.',
   'external_endpoint',
   'http://127.0.0.1:8000/mock/credit_score',
   NULL,
@@ -447,7 +447,7 @@ SELECT
   '33333333-3333-3333-3333-333333333309',
   '11111111-1111-1111-1111-111111111111',
   'income_verification',
-  'Local function verifying income',
+  'Verified gross monthly income meets policy floor for requested product.',
   'function',
   'income_verification',
   NULL,
@@ -482,7 +482,7 @@ SELECT
   '33333333-3333-3333-3333-333333333310',
   '11111111-1111-1111-1111-111111111111',
   'loan_amount_check',
-  'Local function checking loan amount',
+  'Requested principal within product limit and affordability rules.',
   'function',
   'loan_amount_check',
   NULL,
@@ -517,7 +517,7 @@ SELECT
   '33333333-3333-3333-3333-333333333311',
   '11111111-1111-1111-1111-111111111111',
   'disbursement_limit_check',
-  'Function verifying disbursement limit',
+  'Outstanding exposure plus requested disbursement within tenant limit.',
   'function',
   'disbursement_limit_check',
   NULL,
@@ -552,7 +552,7 @@ SELECT
   '33333333-3333-3333-3333-333333333312',
   '11111111-1111-1111-1111-111111111111',
   'delinquent_days',
-  'Expression: previous_delinquency * 5',
+  'Derived delinquency exposure in days (prior events × severity factor).',
   'expression',
   NULL,
   'previous_delinquency * 5',
@@ -587,7 +587,7 @@ SELECT
   '33333333-3333-3333-3333-333333333313',
   '11111111-1111-1111-1111-111111111111',
   'delinquent_severity',
-  'Expression referencing delinquent_days',
+  'Weighted delinquency severity score used in servicing intervention rules.',
   'expression',
   NULL,
   'delinquent_days + 10',
@@ -1135,39 +1135,41 @@ UPDATE signals
  WHERE id = '33333333-3333-3333-3333-333333333304';
 
 UPDATE signals
-   SET description = 'Internal doc verification (POST with user data)'
+   SET description = 'Document authenticity verified via internal POST service with applicant profile payload.'
  WHERE id = '33333333-3333-3333-3333-333333333305';
 
 UPDATE signals
-   SET description = 'Internal sanction screening (GET with query param)'
+   SET description = 'Sanctions and PEP screening via internal GET service with applicant identifier.'
  WHERE id = '33333333-3333-3333-3333-333333333306';
 
 UPDATE signals
-   SET description = 'External endpoint returning user KYC score (0-100)'
+   SET description = 'Know-your-customer composite score (0–100) from external identity bureau.'
  WHERE id = '33333333-3333-3333-3333-333333333307';
 
 UPDATE signals
-   SET description = 'External endpoint returning credit score (0-100)'
+   SET description = 'Primary bureau credit score (300–850) from external credit pull.'
  WHERE id = '33333333-3333-3333-3333-333333333308';
 
 UPDATE signals
-   SET description = 'Local function verifying income'
+   SET description = 'Verified gross monthly income meets policy floor for requested product.'
  WHERE id = '33333333-3333-3333-3333-333333333309';
 
 UPDATE signals
-   SET description = 'Local function checking loan amount'
+   SET description = 'Requested principal within product limit and affordability rules.'
  WHERE id = '33333333-3333-3333-3333-333333333310';
 
 UPDATE signals
-   SET description = 'Function verifying disbursement limit'
+   SET description = 'Outstanding exposure plus requested disbursement within tenant limit.'
  WHERE id = '33333333-3333-3333-3333-333333333311';
 
 UPDATE signals
-   SET description = 'Expression: previous_delinquency * 5'
+   SET description = 'Derived delinquency exposure in days (prior events × severity factor).',
+       expression_body = 'previous_delinquency * 5'
  WHERE id = '33333333-3333-3333-3333-333333333312';
 
 UPDATE signals
-   SET description = 'Expression referencing delinquent_days'
+   SET description = 'Weighted delinquency severity score used in servicing intervention rules.',
+       expression_body = 'delinquent_days + 10'
  WHERE id = '33333333-3333-3333-3333-333333333313';
 
 UPDATE signals

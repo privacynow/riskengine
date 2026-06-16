@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS signals (
     request_url_params_template TEXT,
     request_body_template TEXT,
     request_headers_template TEXT,
-    -- Demo-only: outbound connector token stored plaintext; API reads return has_bearer_token only.
+    -- Outbound connector token; encrypted at rest (enc:v1:) when DECISION_ENGINE_SECRET_ENCRYPTION_KEY is set.
+    -- Admin API never returns the value (has_bearer_token only).
     bearer_token TEXT,
     allow_caching BOOLEAN NOT NULL DEFAULT FALSE,
     global_reuse BOOLEAN NOT NULL DEFAULT FALSE,

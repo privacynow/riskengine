@@ -169,7 +169,7 @@ const { load } = overview;
 const testDecisionsLink = computed(() => routeWithTenant({ name: "test-decisions" }));
 const auditLink = computed(() => routeWithTenant({ name: "audit-decisions" }));
 const signalAuditLink = computed(() => routeWithTenant({ name: "audit-signal-logs" }));
-const flowsLink = computed(() => routeWithTenant({ name: "checkpoints" }));
+const checkpointsLink = computed(() => routeWithTenant({ name: "checkpoints" }));
 const signalsLink = computed(() => routeWithTenant({ name: "signals" }));
 
 const quickActions = computed(() => [
@@ -189,7 +189,7 @@ const quickActions = computed(() => [
     label: "New checkpoint",
     hint: "Checkpoints",
     icon: "plus" as const,
-    to: flowsLink.value,
+    to: checkpointsLink.value,
   },
   {
     label: "New signal",

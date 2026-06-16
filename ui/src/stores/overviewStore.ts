@@ -8,7 +8,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { useTenantStore } from "@/stores/tenantStore";
 
 const DECISION_SAMPLE_SIZE = 8;
-const FLOW_CAP_SAMPLE_SIZE = 50;
+const CHECKPOINT_CAP_SAMPLE_SIZE = 50;
 
 function formatCost(value: number): string {
   if (!value) return "—";
@@ -27,7 +27,7 @@ export const useOverviewStore = defineStore("overview", {
     decisionSearchTotal: 0,
     failedSignalCount: 0,
     peakDecisionCost: 0,
-    maxFlowCostCap: 0,
+    maxCheckpointCostCap: 0,
     avgDecisionCost: 0,
     recentDecisions: [] as DecisionSummary[],
     failedSignalLogs: [] as SignalLogSummary[],
@@ -47,11 +47,11 @@ export const useOverviewStore = defineStore("overview", {
       return String(total);
     },
     costPressureHint(): string {
-      if (!this.maxFlowCostCap) {
-        return `No caps in first ${FLOW_CAP_SAMPLE_SIZE} active checkpoints`;
+      if (!this.maxCheckpointCostCap) {
+        return `No caps in first ${CHECKPOINT_CAP_SAMPLE_SIZE} active checkpoints`;
       }
-      const pct = Math.round((this.peakDecisionCost / this.maxFlowCostCap) * 100);
-      return `${pct}% of sample cap (first ${FLOW_CAP_SAMPLE_SIZE} checkpoints)`;
+      const pct = Math.round((this.peakDecisionCost / this.maxCheckpointCostCap) * 100);
+      return `${pct}% of sample cap (first ${CHECKPOINT_CAP_SAMPLE_SIZE} checkpoints)`;
     },
     peakCostLabel(): string {
       return formatCost(this.peakDecisionCost);
@@ -60,8 +60,8 @@ export const useOverviewStore = defineStore("overview", {
       return formatCost(this.avgDecisionCost);
     },
     costPressureTone(): "default" | "warning" | "danger" {
-      if (!this.maxFlowCostCap || !this.peakDecisionCost) return "default";
-      const ratio = this.peakDecisionCost / this.maxFlowCostCap;
+      if (!this.maxCheckpointCostCap || !this.peakDecisionCost) return "default";
+      const ratio = this.peakDecisionCost / this.maxCheckpointCostCap;
       if (ratio >= 0.9) return "danger";
       if (ratio >= 0.7) return "warning";
       return "default";
@@ -132,7 +132,7 @@ export const useOverviewStore = defineStore("overview", {
           tenantId
             ? checkpointsApi.list({
                 page: 1,
-                size: FLOW_CAP_SAMPLE_SIZE,
+                size: CHECKPOINT_CAP_SAMPLE_SIZE,
                 tenant_id: tenantId,
                 active_only: true,
               })
@@ -163,7 +163,7 @@ export const useOverviewStore = defineStore("overview", {
         this.avgDecisionCost = costs.length
           ? costs.reduce((sum, c) => sum + c, 0) / costs.length
           : 0;
-        this.maxFlowCostCap = checkpointSample.items.reduce(
+        this.maxCheckpointCostCap = checkpointSample.items.reduce(
           (max, cp) => Math.max(max, cp.max_cost ?? 0),
           0
         );

@@ -116,7 +116,7 @@
             <div v-else-if="detailTab === 'associations'">
               <FormSection title="Used by checkpoints">
                 <AssociationPicker
-                  :linked-items="linkedFlows"
+                  :linked-items="linkedCheckpoints"
                   :candidates="checkpointCandidatesForSelected"
                   :search-query="checkpointSearchForSelected"
                   :page="checkpointPageForSelected"
@@ -214,7 +214,7 @@ const detailTabs = [
   { id: "variables", label: "Values" },
 ];
 
-const linkedFlows = computed(() =>
+const linkedCheckpoints = computed(() =>
   detailAssociatedCheckpoints.value.map((cp) => ({ id: cp.id, name: cp.name }))
 );
 

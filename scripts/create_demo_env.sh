@@ -23,6 +23,9 @@ sample_token = secrets.token_hex(24)
 other_token = secrets.token_hex(24)
 admin_token = secrets.token_hex(24)
 dev_purge_confirm = secrets.token_hex(16)
+from cryptography.fernet import Fernet
+
+encryption_key = Fernet.generate_key().decode("utf-8")
 
 existing_db_password = None
 if env_file.is_file():
@@ -66,6 +69,7 @@ lines = [
     f"POSTGRES_PASSWORD={db_password}",
     "DECISION_ENGINE_DEV_PURGE=1",
     f"DECISION_ENGINE_DEV_PURGE_CONFIRM={dev_purge_confirm}",
+    f"DECISION_ENGINE_SECRET_ENCRYPTION_KEY={encryption_key}",
     "",
 ]
 env_file.write_text("\n".join(lines), encoding="utf-8")

@@ -8,14 +8,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+import jwt
 from fastapi import Depends, HTTPException, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .db import db_cursor
+from .permissions import permissions_for_roles
 
 AUTH_CONFIG_HELP = (
     "Set DECISION_ENGINE_AUTH_TOKENS (JSON object) or DECISION_ENGINE_AUTH_TOKENS_FILE "
-    "(path to JSON). For local demo: bash scripts/create_demo_env.sh"
+    "(path to JSON), and/or DECISION_ENGINE_JWT_HS256_SECRET for JWT-only auth "
+    "(optional DECISION_ENGINE_JWT_ISSUER / DECISION_ENGINE_JWT_AUDIENCE). "
+    "Local bootstrap: bash scripts/create_demo_env.sh"
 )
 
 _bearer = HTTPBearer(auto_error=False)
@@ -43,9 +47,14 @@ def _validate_token_map(token_map: Dict[str, Dict[str, Any]]) -> None:
             raise RuntimeError(f"Runtime auth entry at index {index} must include tenant_id.")
 
 
-def _read_auth_config_raw() -> str:
+def _jwt_configured() -> bool:
+    secret, _, _ = _jwt_settings()
+    return bool(secret)
+
+
+def _read_auth_config_raw() -> str | None:
     raw = os.environ.get("DECISION_ENGINE_AUTH_TOKENS")
-    if raw:
+    if raw is not None and raw.strip():
         return raw
     file_path = os.environ.get("DECISION_ENGINE_AUTH_TOKENS_FILE")
     if file_path:
@@ -53,11 +62,16 @@ def _read_auth_config_raw() -> str:
         if not path.is_file():
             raise RuntimeError(f"DECISION_ENGINE_AUTH_TOKENS_FILE not found: {file_path}")
         return path.read_text(encoding="utf-8")
+    if _jwt_configured():
+        return None
     raise RuntimeError(f"Missing auth configuration. {AUTH_CONFIG_HELP}")
 
 
 def load_token_map() -> Dict[str, Dict[str, Any]]:
-    token_map = _parse_token_map(_read_auth_config_raw())
+    raw = _read_auth_config_raw()
+    if raw is None:
+        return {}
+    token_map = _parse_token_map(raw)
     _validate_token_map(token_map)
     return token_map
 
@@ -79,6 +93,11 @@ class AuthContext:
     actor_id: str
     tenant_id: Optional[str]
     roles: frozenset[str]
+    auth_method: str = "static_token"
+
+    @property
+    def permissions(self) -> frozenset[str]:
+        return permissions_for_roles(self.roles)
 
     @property
     def is_admin(self) -> bool:
@@ -89,6 +108,43 @@ class AuthContext:
         return "runtime" in self.roles
 
 
+def _jwt_settings() -> tuple[str | None, str | None, str | None]:
+    secret = os.environ.get("DECISION_ENGINE_JWT_HS256_SECRET", "").strip() or None
+    issuer = os.environ.get("DECISION_ENGINE_JWT_ISSUER", "").strip() or None
+    audience = os.environ.get("DECISION_ENGINE_JWT_AUDIENCE", "").strip() or None
+    return secret, issuer, audience
+
+
+def _auth_context_from_jwt(token: str) -> AuthContext | None:
+    secret, issuer, audience = _jwt_settings()
+    if not secret:
+        return None
+    options = {"require": ["exp", "sub"]}
+    decode_kwargs: dict[str, Any] = {"algorithms": ["HS256"], "options": options}
+    if issuer:
+        decode_kwargs["issuer"] = issuer
+    if audience:
+        decode_kwargs["audience"] = audience
+    try:
+        claims = jwt.decode(token, secret, **decode_kwargs)
+    except jwt.PyJWTError:
+        return None
+    roles_raw = claims.get("roles") or claims.get("role") or []
+    if isinstance(roles_raw, str):
+        roles = frozenset({roles_raw})
+    elif isinstance(roles_raw, list):
+        roles = frozenset(str(r) for r in roles_raw)
+    else:
+        roles = frozenset()
+    tenant_id = claims.get("tenant_id")
+    return AuthContext(
+        actor_id=str(claims.get("sub") or claims.get("actor_id") or "unknown"),
+        tenant_id=str(tenant_id) if tenant_id else None,
+        roles=roles,
+        auth_method="jwt",
+    )
+
+
 def get_auth_context(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
 ) -> AuthContext:
@@ -96,14 +152,30 @@ def get_auth_context(
         raise HTTPException(status_code=401, detail="Authentication required.")
     token = credentials.credentials
     entry = get_token_map().get(token)
-    if not entry:
-        raise HTTPException(status_code=401, detail="Invalid or unknown token.")
-    roles = frozenset(entry.get("roles") or [])
-    return AuthContext(
-        actor_id=str(entry.get("actor_id") or "unknown"),
-        tenant_id=entry.get("tenant_id"),
-        roles=roles,
-    )
+    if entry:
+        roles = frozenset(entry.get("roles") or [])
+        return AuthContext(
+            actor_id=str(entry.get("actor_id") or "unknown"),
+            tenant_id=entry.get("tenant_id"),
+            roles=roles,
+            auth_method="static_token",
+        )
+    jwt_ctx = _auth_context_from_jwt(token)
+    if jwt_ctx:
+        return jwt_ctx
+    raise HTTPException(status_code=401, detail="Invalid or unknown token.")
+
+
+def require_permission(permission: str):
+    def _dependency(auth: AuthContext = Depends(get_auth_context)) -> AuthContext:
+        if permission not in auth.permissions:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Missing required permission: {permission}",
+            )
+        return auth
+
+    return _dependency
 
 
 def require_admin(auth: AuthContext = Depends(get_auth_context)) -> AuthContext:
@@ -158,7 +230,7 @@ def resolve_admin_tenant_id(
 
 def admin_tenant_query(
     tenant_id: Optional[str] = Query(None),
-    auth: AuthContext = Depends(require_admin),
+    auth: AuthContext = Depends(require_permission("admin:read")),
 ) -> Optional[str]:
     if tenant_id:
         return resolve_admin_tenant_id(auth, tenant_id, required=False)

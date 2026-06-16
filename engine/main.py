@@ -1,4 +1,4 @@
-import asyncio
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -8,7 +8,7 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from .audit import log_processor, log_queue
+from .audit import drain_pending_outbox
 from .auth import initialize_auth
 from .config import APP_TITLE, logger, validate_config
 from .migrations import ensure_schema
@@ -34,12 +34,9 @@ async def lifespan(app: FastAPI):
     validate_config()
     initialize_auth()
     ensure_schema()
-    task = asyncio.create_task(log_processor())
+    drain_pending_outbox()
     logger.info("%s started.", APP_TITLE)
     yield
-    await log_queue.put(None)
-    await log_queue.join()
-    task.cancel()
     logger.info("%s shutdown.", APP_TITLE)
 
 

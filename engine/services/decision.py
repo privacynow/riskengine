@@ -5,7 +5,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..audit import log_queue
+from ..audit import persist_signal_logs
 from ..cache import in_memory_signal_cache
 from ..config import logger
 from ..models import DecisionRequest, DecisionResponse
@@ -90,6 +90,8 @@ async def execute_decision(
     user_params = request.parameters or {}
     checkpoint_timed_out = False
 
+    pending_signal_logs: list[dict[str, Any]] = []
+
     signals_by_order: Dict[int, list] = defaultdict(list)
     for signal in signals:
         signals_by_order[signal.order_of_evaluation].append(signal)
@@ -116,6 +118,9 @@ async def execute_decision(
             return 0.0
         return min(per_signal, remaining)
 
+    def enqueue_signal_log(log_item: dict[str, Any]) -> None:
+        pending_signal_logs.append(log_item)
+
     async def log_skipped_signal(
         row: ExecutableSignalRow,
         *,
@@ -123,9 +128,8 @@ async def execute_decision(
         partial_params: Dict[str, Any],
     ) -> None:
         now = datetime.utcnow()
-        await log_queue.put(
+        enqueue_signal_log(
             {
-                "type": "signal",
                 "signal_log_id": str(uuid.uuid4()),
                 "decision_log_id": decision_id,
                 "signal_id": row.id,
@@ -136,7 +140,6 @@ async def execute_decision(
                 "cost_incurred": 0,
                 "success": False,
                 "placeholder_values": partial_params,
-                "actor_id": actor_id,
                 "error_message": error_message,
             }
         )
@@ -144,9 +147,8 @@ async def execute_decision(
     async def record_skipped_signal(row: ExecutableSignalRow, error_message: str) -> None:
         now = datetime.utcnow()
         signal_results[row.name] = False
-        await log_queue.put(
+        enqueue_signal_log(
             {
-                "type": "signal",
                 "signal_log_id": str(uuid.uuid4()),
                 "decision_log_id": decision_id,
                 "signal_id": row.id,
@@ -157,7 +159,6 @@ async def execute_decision(
                 "cost_incurred": 0,
                 "success": False,
                 "placeholder_values": {},
-                "actor_id": actor_id,
                 "error_message": error_message,
             }
         )
@@ -330,9 +331,8 @@ async def execute_decision(
                 cur3.close()
 
         ended = datetime.utcnow()
-        await log_queue.put(
+        enqueue_signal_log(
             {
-                "type": "signal",
                 "signal_log_id": str(uuid.uuid4()),
                 "decision_log_id": decision_id,
                 "signal_id": row.id,
@@ -343,7 +343,6 @@ async def execute_decision(
                 "cost_incurred": row.cost if success else 0,
                 "success": success,
                 "placeholder_values": partial_params,
-                "actor_id": actor_id,
                 "error_message": error_message,
             }
         )
@@ -427,6 +426,7 @@ async def execute_decision(
             final_eval = False
 
     final_decision_val = str(final_eval)
+    persist_signal_logs(cur, pending_signal_logs)
     cur.execute(
         """
         UPDATE decision_log

@@ -33,7 +33,7 @@
       <RouterLink
         v-if="detail.checkpoint_id"
         class="btn-secondary btn-sm"
-        :to="flowLink"
+        :to="checkpointLink"
       >
         Open checkpoint
       </RouterLink>
@@ -71,7 +71,7 @@ const traceSteps = computed((): TraceStep[] => {
   }));
 });
 
-const flowLink = computed(() =>
+const checkpointLink = computed(() =>
   props.detail?.checkpoint_id
     ? routeWithTenant({
         name: "checkpoint-detail",

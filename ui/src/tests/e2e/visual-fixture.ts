@@ -1,7 +1,7 @@
 /** Must stay aligned with tests/fixtures/visual_fixture.sql */
 export const VISUAL_FIXTURE = {
   tenantName: "VISUAL FIXTURE BANK",
-  checkpointName: "Fixture Flow",
+  checkpointName: "Fixture Checkpoint",
   signalName: "fixture_signal",
-  promotionSearch: "Fixture Flow",
+  promotionSearch: "Fixture Checkpoint",
 } as const;

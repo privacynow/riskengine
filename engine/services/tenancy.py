@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import HTTPException
 from psycopg2.extensions import cursor
 
+from .secret_storage import decrypt_secret
 from .templates import extract_placeholders_from_text
 
 
@@ -88,7 +89,7 @@ class ExecutableSignalRow:
             request_url_params_template=row[11],
             request_body_template=row[12],
             request_headers_template=row[13],
-            bearer_token=row[14],
+            bearer_token=decrypt_secret(row[14]),
             allow_caching=row[15],
             global_reuse=row[16],
             function_params_template=row[17],
@@ -119,7 +120,7 @@ class SignalDetailRow(ExecutableSignalRow):
             request_url_params_template=row[13],
             request_body_template=row[14],
             request_headers_template=row[15],
-            bearer_token=row[16],
+            bearer_token=decrypt_secret(row[16]),
             allow_caching=row[17],
             global_reuse=row[18],
             function_params_template=row[19],

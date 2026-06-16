@@ -144,12 +144,8 @@ class TestAdminHygiene:
                 conn.commit()
 
     def test_create_checkpoint_with_associated_signals(self, client):
-        signals = client.get(
-            f"/ui/signals?tenant_id={SAMPLE_TENANT}&page=1&size=50",
-            headers=auth_header(TEST_ADMIN_TOKEN),
-        ).json()["items"]
-        age_check = next(item for item in signals if item["name"] == "age_check")
-        blocklist = next(item for item in signals if item["name"] == "blocklist_check")
+        age_check_id = "33333333-3333-3333-3333-333333333301"
+        blocklist_id = "33333333-3333-3333-3333-333333333302"
 
         created = client.post(
             "/ui/checkpoints",
@@ -159,7 +155,7 @@ class TestAdminHygiene:
                 "name": "assoc-create-test",
                 "type": "onboarding",
                 "dsl_expression": "age_check and not blocklist_check",
-                "signals": [age_check["id"], blocklist["id"]],
+                "signals": [age_check_id, blocklist_id],
             },
         )
         assert created.status_code == 200

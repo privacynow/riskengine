@@ -34,14 +34,14 @@
       <template #master>
         <div class="card workbench-list-card">
           <div class="list-row-stack">
-            <FlowListRow
-              v-for="cp in checkpoints"
-              :key="cp.id"
-              :checkpoint="cp"
-              :selected="selectedCheckpointId === cp.id"
-              :promotable="false"
-              @open="selectCheckpoint(cp.id)"
-            />
+              <CheckpointListRow
+                v-for="cp in checkpoints"
+                :key="cp.id"
+                :checkpoint="cp"
+                :selected="selectedCheckpointId === cp.id"
+                :promotable="false"
+                @open="selectCheckpoint(cp.id)"
+              />
           </div>
         </div>
 
@@ -71,7 +71,7 @@
             </div>
             <RouterLink
               class="btn-secondary btn-sm"
-              :to="flowDetailLink"
+              :to="checkpointDetailLink"
             >
               Open checkpoint
             </RouterLink>
@@ -155,7 +155,7 @@ import AppPagination from "@/components/primitives/AppPagination.vue";
 import PageHeader from "@/components/workbench/PageHeader.vue";
 import WorkbenchLayout from "@/components/workbench/WorkbenchLayout.vue";
 import FieldRow from "@/components/workbench/FieldRow.vue";
-import FlowListRow from "@/components/workbench/FlowListRow.vue";
+import CheckpointListRow from "@/components/workbench/CheckpointListRow.vue";
 import StatusBadge from "@/components/workbench/StatusBadge.vue";
 import FormSection from "@/components/workbench/FormSection.vue";
 import DslPreflightPanel from "@/components/workbench/DslPreflightPanel.vue";
@@ -195,7 +195,7 @@ const harnessSignalNames = computed(() => {
   return (assocSignals.value[cpId] || []).map((sig) => sig.name);
 });
 
-const flowDetailLink = computed(() =>
+const checkpointDetailLink = computed(() =>
   activeCheckpoint.value
     ? routeWithTenant({
         name: "checkpoint-detail",

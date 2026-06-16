@@ -53,7 +53,8 @@ Within each order group:
 Expression signals receive prior signal results plus request `parameters` whose names appear as DSL identifiers in `expression_body` (and template placeholders for HTTP/function signals).
 
 4. Evaluates checkpoint `dsl_expression`
-5. Updates `decision_log` (never left `PENDING` after orchestration completes)
+5. Persists signal audit rows in the same database transaction as the final `decision_log` update (no in-process-only queue)
+6. Updates `decision_log` (never left `PENDING` after orchestration completes)
 
 ## Configuration writes
 
@@ -70,7 +71,7 @@ Path and write-model IDs are validated as UUIDs. Invalid IDs return **422** befo
 
 ## Connector secrets
 
-Outbound HTTP auth belongs in `signals.bearer_token` only. API reads redact templates and param values. Copied tenants get `NULL` bearer tokens.
+Outbound HTTP auth belongs in `signals.bearer_token` only. Values are encrypted at rest (`enc:v1:`) when `DECISION_ENGINE_SECRET_ENCRYPTION_KEY` is configured; admin writes with a bearer token fail if the key is missing. API reads redact templates and param values. Copied tenants get `NULL` bearer tokens.
 
 ## Outbound URL policy
 

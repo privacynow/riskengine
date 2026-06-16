@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header
 
-from ..auth import AuthContext, require_admin
+from ..auth import AuthContext, require_permission
 from ..db import get_db_connection
 from ..models import DevTenantPurgeRequest
 from ..services.dev_purge import (
@@ -19,7 +19,7 @@ from ..services.dev_purge import (
 
 router = APIRouter(
     tags=["dev-purge"],
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_permission("admin:write"))],
     include_in_schema=False,
 )
 
@@ -45,7 +45,7 @@ def dev_purge_status():
 @router.post("/ui/dev/purge/tenant")
 def purge_tenant_dev_data(
     payload: DevTenantPurgeRequest,
-    auth: AuthContext = Depends(require_admin),
+    auth: AuthContext = Depends(require_permission("admin:write")),
     _: None = Depends(_require_dev_purge_gate),
 ):
     """

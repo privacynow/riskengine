@@ -7,7 +7,7 @@
     <StatusBadge :variant="outcomeVariant" :text="outcomeLabel" />
     <button type="button" class="list-row-open" @click="$emit('open')">
       <span class="list-row-body">
-        <span class="list-row-title">{{ flowName }}</span>
+        <span class="list-row-title">{{ checkpointName }}</span>
         <span class="list-row-meta">{{ metaLine }}</span>
       </span>
       <span class="list-row-trailing">
@@ -29,7 +29,7 @@
   >
     <StatusBadge :variant="outcomeVariant" :text="outcomeLabel" />
     <div class="list-row-body">
-      <span class="list-row-title">{{ flowName }}</span>
+      <span class="list-row-title">{{ checkpointName }}</span>
       <span class="list-row-meta">{{ metaLine }}</span>
     </div>
     <div class="list-row-trailing">
@@ -66,7 +66,7 @@ const selectable = computed(() => !props.to);
 
 const outcomeLabel = computed(() => props.decision.final_decision_value || "—");
 const outcomeVariant = computed(() => decisionOutcomeVariant(props.decision.final_decision_value));
-const flowName = computed(() => props.decision.checkpoint_name || "Unknown checkpoint");
+const checkpointName = computed(() => props.decision.checkpoint_name || "Unknown checkpoint");
 const metaLine = computed(() => {
   const parts = [
     props.decision.applicant_id ? `Applicant ${props.decision.applicant_id}` : null,

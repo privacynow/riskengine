@@ -16,6 +16,13 @@ def reload_test_client() -> TestClient:
 
 
 @pytest.fixture
+def dev_purge_disabled_client(monkeypatch):
+    monkeypatch.delenv("DECISION_ENGINE_DEV_PURGE", raising=False)
+    monkeypatch.delenv("DECISION_ENGINE_DEV_PURGE_CONFIRM", raising=False)
+    return reload_test_client()
+
+
+@pytest.fixture
 def client():
     return reload_test_client()
 
@@ -31,16 +38,16 @@ def dev_purge_client(enable_dev_purge):
     return reload_test_client()
 
 
-def test_dev_purge_status_hidden_when_disabled(client):
-    response = client.get(
+def test_dev_purge_status_hidden_when_disabled(dev_purge_disabled_client):
+    response = dev_purge_disabled_client.get(
         "/ui/dev/purge/status",
         headers=auth_header(TEST_ADMIN_TOKEN),
     )
     assert response.status_code == 404
 
 
-def test_dev_purge_status_hidden_when_disabled_without_auth(client):
-    response = client.get("/ui/dev/purge/status")
+def test_dev_purge_status_hidden_when_disabled_without_auth(dev_purge_disabled_client):
+    response = dev_purge_disabled_client.get("/ui/dev/purge/status")
     assert response.status_code == 404
 
 

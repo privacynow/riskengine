@@ -50,12 +50,12 @@
         <template #master>
           <div v-if="items.length" class="card workbench-list-card">
             <div class="list-row-stack">
-              <FlowListRow
+              <CheckpointListRow
                 v-for="cp in items"
                 :key="cp.id"
                 :checkpoint="cp"
                 :selected="selectedId === cp.id"
-                @open="openFlow(cp.id)"
+                @open="openCheckpoint(cp.id)"
                 @promote="setCurrentVersion(cp.id)"
                 @deactivate="deactivateVersion(cp.id)"
                 @reactivate="reactivateVersion(cp.id)"
@@ -164,7 +164,7 @@ import EmptyState from "@/components/primitives/EmptyState.vue";
 import AppPagination from "@/components/primitives/AppPagination.vue";
 import CheckpointForm from "@/components/domain/checkpoints/CheckpointForm.vue";
 import PageHeader from "@/components/workbench/PageHeader.vue";
-import FlowListRow from "@/components/workbench/FlowListRow.vue";
+import CheckpointListRow from "@/components/workbench/CheckpointListRow.vue";
 import WorkbenchLayout from "@/components/workbench/WorkbenchLayout.vue";
 import WorkbenchTabs from "@/components/workbench/WorkbenchTabs.vue";
 import StatusBadge from "@/components/workbench/StatusBadge.vue";
@@ -240,7 +240,7 @@ watch(
   { immediate: true }
 );
 
-function openFlow(id: string) {
+function openCheckpoint(id: string) {
   router.push(routeWithTenant({ name: "checkpoint-detail", params: { checkpointId: id } }));
 }
 

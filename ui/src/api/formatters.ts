@@ -57,8 +57,8 @@ export function isCurrentVersion(
   return !!row?.is_current_version;
 }
 
-/** Flow max_cost cap label — undefined means no cap configured. */
-export function formatFlowCostCap(maxCost?: number): string {
+/** Checkpoint max_cost cap label — undefined means no cap configured. */
+export function formatCheckpointCostCap(maxCost?: number): string {
   if (maxCost == null) return "No cap";
   return `Cap ${maxCost.toFixed(2)}`;
 }

@@ -50,6 +50,20 @@ CI runs both gates. Dev toolchain was upgraded (Vite 8, Vitest 4, Playwright 1.6
 
 `scripts/ui_smoke.sh` runs a separate browser workflow check via `scripts/ui_browser_smoke.mjs`. CI runs scripts audit, UI smoke, then Playwright e2e (scrubbed env; see above).
 
+## Visual regression policy
+
+- Snapshots live under `src/tests/e2e/visual-review.spec.ts-snapshots/`.
+- Targets are **view roots** or **list cards** (`.workbench-list-card`), not full-page screenshots, to reduce font/wrap noise.
+- Deterministic data comes from `tests/fixtures/visual_fixture.sql` via `scripts/seed_visual_fixture.sh` and the `VISUAL FIXTURE BANK` tenant.
+- Update snapshots only when UI changes are intentional:
+
+```bash
+cd ui
+./node_modules/.bin/playwright test visual-review.spec.ts --update-snapshots
+```
+
+- Commit snapshot diffs with the UI change that caused them. Do not bulk-update snapshots to silence unrelated CI failures.
+
 ## Source layout
 
 ```text

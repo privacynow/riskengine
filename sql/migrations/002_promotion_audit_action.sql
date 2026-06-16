@@ -1,0 +1,2 @@
+ALTER TABLE promotion_audit
+    ADD COLUMN IF NOT EXISTS action VARCHAR(32) NOT NULL DEFAULT 'promote';

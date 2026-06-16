@@ -30,7 +30,7 @@
       <RouterLink
         v-if="promotion.resource_type === 'checkpoint'"
         class="btn-secondary btn-sm"
-        :to="flowLink"
+        :to="checkpointLink"
       >
         Open checkpoint
       </RouterLink>
@@ -78,7 +78,7 @@ const heroHint = computed(() => {
   return hints[action] || `Governance action recorded for this ${resource}.`;
 });
 
-const flowLink = computed(() =>
+const checkpointLink = computed(() =>
   props.promotion?.resource_id
     ? routeWithTenant({
         name: "checkpoint-detail",
