@@ -14,7 +14,7 @@ from models import DecisionRequest, DecisionResponse
 from services.decision import execute_decision
 from services.request_parsing import reject_runtime_tenant_query
 from services.templates import build_template_explanation, decorate_dsl_expression
-from services.security import redact_template_for_response
+from services.security import redact_param_map_for_response, redact_template_for_response
 from services.tenancy import (
     fetch_checkpoint_signal_details,
     fetch_current_checkpoint_row,
@@ -122,7 +122,9 @@ def get_historical_decision(
                 """,
                 (sl_id,),
             )
-            param_map = {pr[0]: pr[1] for pr in cur2.fetchall()}
+            param_map = redact_param_map_for_response(
+                {pr[0]: pr[1] for pr in cur2.fetchall()}
+            )
             cur2.close()
 
             cur3 = conn.cursor()

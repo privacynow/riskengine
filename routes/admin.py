@@ -206,7 +206,7 @@ def create_tenant(payload: TenantCreateUpdate):
                 """,
                 (payload.copy_from_tenant_id,),
             )
-            signal_mappings: dict[str, str] = {}
+            signal_name_to_new_id: dict[str, str] = {}
             for row in cur.fetchall():
                 (
                     old_sig_id,
@@ -262,7 +262,7 @@ def create_tenant(payload: TenantCreateUpdate):
                     ),
                 )
                 new_sig_id = cur.fetchone()[0]
-                signal_mappings[str(old_sig_id)] = str(new_sig_id)
+                signal_name_to_new_id[name] = str(new_sig_id)
                 cur.execute(
                     """
                     INSERT INTO signal_current_version (tenant_id, name, signal_id)
@@ -272,28 +272,43 @@ def create_tenant(payload: TenantCreateUpdate):
                 )
 
             for old_cp_id, new_cp_id in checkpoint_mappings.items():
-                for old_sig_id, new_sig_id in signal_mappings.items():
+                cur.execute(
+                    """
+                    SELECT DISTINCT s.name
+                      FROM checkpoint_signals cs
+                      JOIN signals s ON s.id = cs.signal_id
+                     WHERE cs.checkpoint_id = %s::uuid
+                    """,
+                    (old_cp_id,),
+                )
+                for (linked_signal_name,) in cur.fetchall():
+                    new_sig_id = signal_name_to_new_id.get(linked_signal_name)
+                    if not new_sig_id:
+                        continue
                     cur.execute(
                         """
                         INSERT INTO checkpoint_signals (checkpoint_id, signal_id)
                         SELECT %s::uuid, %s::uuid
-                         WHERE EXISTS (
+                         WHERE NOT EXISTS (
                             SELECT 1 FROM checkpoint_signals
                              WHERE checkpoint_id = %s::uuid AND signal_id = %s::uuid
                          )
                         """,
-                        (new_cp_id, new_sig_id, old_cp_id, old_sig_id),
+                        (new_cp_id, new_sig_id, new_cp_id, new_sig_id),
                     )
 
-            for old_sig_id, new_sig_id in signal_mappings.items():
+            for signal_name, new_sig_id in signal_name_to_new_id.items():
                 cur.execute(
                     """
                     INSERT INTO signal_variable_values (signal_id, name, value)
-                    SELECT %s::uuid, name, value
-                      FROM signal_variable_values
-                     WHERE signal_id = %s::uuid
+                    SELECT DISTINCT ON (svv.name) %s::uuid, svv.name, svv.value
+                      FROM signal_variable_values svv
+                      JOIN signals s ON s.id = svv.signal_id
+                     WHERE s.tenant_id = %s AND s.name = %s
+                     ORDER BY svv.name, svv.updated_at DESC
+                    ON CONFLICT (signal_id, name) DO NOTHING
                     """,
-                    (new_sig_id, old_sig_id),
+                    (new_sig_id, payload.copy_from_tenant_id, signal_name),
                 )
         
         conn.commit()
@@ -343,7 +358,7 @@ def create_checkpoint(payload: CheckpointCreateUpdate):
     
     except Exception as e:
         conn.rollback()
-        raise_admin_error(e, context="create_tenant failed")
+        raise_admin_error(e, context="create_checkpoint failed")
     finally:
         cur.close()
         conn.close()
@@ -439,7 +454,7 @@ def create_signal(payload: SignalCreateUpdate):
     
     except Exception as e:
         conn.rollback()
-        raise_admin_error(e, context="create_tenant failed")
+        raise_admin_error(e, context="create_signal failed")
     finally:
         cur.close()
         conn.close()
@@ -1478,7 +1493,7 @@ def make_checkpoint_current(checkpoint_id: str):
         return {"status": "success"}
     except Exception as e:
         conn.rollback()
-        raise_admin_error(e, context="create_tenant failed")
+        raise_admin_error(e, context="make_checkpoint_current failed")
     finally:
         cur.close()
         conn.close()
@@ -1528,7 +1543,7 @@ def toggle_signal_active(signal_id: str):
         return {"success": True, "is_active": not is_active}
     except Exception as e:
         conn.rollback()
-        raise_admin_error(e, context="create_tenant failed")
+        raise_admin_error(e, context="toggle_signal_active failed")
     finally:
         cur.close()
         conn.close()
@@ -1563,6 +1578,6 @@ def make_signal_current(signal_id: str):
         return {"message": "Signal set as current version"}
     except Exception as e:
         conn.rollback()
-        raise_admin_error(e, context="create_tenant failed")
+        raise_admin_error(e, context="make_signal_current failed")
     finally:
         conn.close()

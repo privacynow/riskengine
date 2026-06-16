@@ -79,7 +79,6 @@ class AuthContext:
     actor_id: str
     tenant_id: Optional[str]
     roles: frozenset[str]
-    token: str
 
     @property
     def is_admin(self) -> bool:
@@ -104,7 +103,6 @@ def get_auth_context(
         actor_id=str(entry.get("actor_id") or "unknown"),
         tenant_id=entry.get("tenant_id"),
         roles=roles,
-        token=token,
     )
 
 

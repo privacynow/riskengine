@@ -22,13 +22,26 @@ BLOCKED_OUTBOUND_HOSTS = frozenset(
     }
 )
 
-_SENSITIVE_HEADER_NAME = re.compile(
-    r"^(authorization|x-api-key|api-key|x-auth-token|secret|token|password)$",
+_SENSITIVE_NAME = re.compile(
+    r"^(authorization|x-api-key|api-key|api_key|x-auth-token|secret|token|password)$",
     re.IGNORECASE,
 )
 _SENSITIVE_KV_PATTERN = re.compile(
-    r'(?i)(["\']?(?:api[_-]?key|secret|token|password|authorization)["\']?\s*[:=]\s*["\']?)([^"\')\s,]+)'
+    r'(?i)(["\']?(?:api[_-]?key|secret|token|password|authorization)["\']?\s*[:=]\s*)'
+    r'("(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|[^"\')\s,]+)'
 )
+
+
+def _redact_sensitive_kv_strings(text: str) -> str:
+    def replacer(match: re.Match[str]) -> str:
+        prefix = match.group(1)
+        value = match.group(2)
+        if value and value[0] in "\"'":
+            quote = value[0]
+            return f"{prefix}{quote}[REDACTED]{quote}"
+        return f"{prefix}[REDACTED]"
+
+    return _SENSITIVE_KV_PATTERN.sub(replacer, text)
 
 
 def has_bearer_token_value(token: Optional[str]) -> bool:
@@ -58,10 +71,10 @@ def redact_template_for_response(template: Optional[str]) -> Optional[str]:
     for line in template.split("\n"):
         if ":" in line:
             key, _, value = line.partition(":")
-            if _SENSITIVE_HEADER_NAME.match(key.strip()) or _looks_like_secret_value(value.strip()):
+            if _SENSITIVE_NAME.match(key.strip()) or _looks_like_secret_value(value.strip()):
                 redacted_lines.append(f"{key.strip()}: [REDACTED]")
                 continue
-        redacted_lines.append(_SENSITIVE_KV_PATTERN.sub(r"\1[REDACTED]", line))
+        redacted_lines.append(_redact_sensitive_kv_strings(line))
     return "\n".join(redacted_lines)
 
 
@@ -71,7 +84,7 @@ def contains_embedded_credential(template: Optional[str]) -> bool:
     for line in template.split("\n"):
         if ":" in line:
             key, _, value = line.partition(":")
-            if _SENSITIVE_HEADER_NAME.match(key.strip()) or _looks_like_secret_value(value.strip()):
+            if _SENSITIVE_NAME.match(key.strip()) or _looks_like_secret_value(value.strip()):
                 return True
         if _SENSITIVE_KV_PATTERN.search(line):
             return True
@@ -82,6 +95,35 @@ def _looks_like_secret_value(value: str) -> bool:
     if not value:
         return False
     return value.lower().startswith("bearer ")
+
+
+def _is_sensitive_name(name: str) -> bool:
+    return bool(_SENSITIVE_NAME.match((name or "").strip()))
+
+
+def _redact_sensitive_value(value: Any) -> Any:
+    if value is None:
+        return value
+    if not isinstance(value, str):
+        return value
+    stripped = value.strip()
+    if _looks_like_secret_value(stripped):
+        return "[REDACTED]"
+    redacted = redact_template_for_response(value)
+    if redacted != value:
+        return redacted
+    redacted = _redact_sensitive_kv_strings(value)
+    return redacted if redacted != value else value
+
+
+def redact_param_map_for_response(param_map: Mapping[str, Any]) -> Dict[str, Any]:
+    redacted: Dict[str, Any] = {}
+    for key, value in param_map.items():
+        if _is_sensitive_name(key):
+            redacted[key] = "[REDACTED]"
+        else:
+            redacted[key] = _redact_sensitive_value(value)
+    return redacted
 
 
 def validate_outbound_signal_url(url: str) -> None:

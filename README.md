@@ -51,13 +51,32 @@ The app **fails startup** if neither is set.
 
 ### Local demo bootstrap
 
+**Run this before first `docker compose up`.** The app fails startup without auth and database credentials.
+
 ```sh
 bash scripts/create_demo_env.sh
 ```
 
-This writes **ignored** `.env.local` and `auth.tokens.local.json` with random tokens and prints the admin bearer token. Docker Compose loads `.env.local` and mounts the token file into the app container.
+This writes **ignored**, **`chmod 600`** files:
 
-Use that admin token when the `/admin/` UI prompts for login. Runtime tokens stay on the server — the admin UI runs test decisions via `POST /ui/test_decisions`.
+| File | Purpose |
+|------|---------|
+| `.env.local` | `DB_PASSWORD`, `POSTGRES_PASSWORD`, smoke-test token vars |
+| `auth.tokens.local.json` | Bearer token map (mounted into the container, not baked into the image) |
+
+The script prints the **admin bearer token once** — paste it into the `/admin/` login prompt. Runtime tokens are not shown and never reach the browser; the admin UI runs test decisions via `POST /ui/test_decisions`.
+
+Re-running `create_demo_env.sh` **preserves an existing `DB_PASSWORD`** but **rotates auth tokens**. Use a fresh admin token after each run.
+
+**If Postgres auth fails** (for example after a first run that generated a new password against an old volume):
+
+```sh
+docker compose down -v
+bash scripts/create_demo_env.sh
+docker compose up -d --build
+```
+
+Or use the clean-room helper: `bash scripts/bootstrap_smoke.sh` (destroys the DB volume, generates env if missing, runs smoke tests).
 
 Runtime clients **must not** send `tenant_id` or `tenant_name`; attempting to do so returns `403`.
 
@@ -82,11 +101,13 @@ PostgreSQL (`risk_engine_db` in Docker Compose). Schema: [`sql/01_schema.sql`](s
 ```sh
 git clone <your-repo-url>
 cd decision-engine
-bash scripts/create_demo_env.sh
+bash scripts/create_demo_env.sh   # required before first boot
 docker compose up -d --build
-open http://localhost:8000/admin/
+open http://localhost:8000/admin/ # paste admin token from script output
 bash scripts/smoke_test.sh
 ```
+
+Compose binds the app to **`127.0.0.1:8000`** and Postgres to **`127.0.0.1:5432`** (local demo only).
 
 Clean-room bootstrap (destroys DB volume, generates env if missing):
 
@@ -125,9 +146,11 @@ docker compose exec -e RUN_INTEGRATION_TESTS=1 risk-engine pytest -q
 ## Security (demo limitations)
 
 - Bearer tokens are local demo credentials only — not production identity.
-- Never commit `.env.local`, `auth.tokens.local.json`, or real token values. Generated files are `chmod 600`.
-- Signal integration tokens are stored as plaintext in Postgres for this demo; reads are redacted (`has_bearer_token`, template credential lines masked). Do not embed secrets in header/body templates — use `bearer_token` only.
-- Postgres publishes on `127.0.0.1:5432` only; password is generated into `.env.local` (re-run `bash scripts/destroy.sh && bash scripts/run.sh` if you regenerate DB credentials).
+- Never commit `.env.local`, `auth.tokens.local.json`, or real token values.
+- Connector auth belongs in the `bearer_token` field only — not in header/body templates. API reads redact credentials (`has_bearer_token`, masked template lines).
+- Copied tenants get signals with **no** bearer token; re-enter integration secrets per tenant.
+- Outbound URL checks block obvious private IPs and metadata hosts only — not full SSRF protection.
+- `/mock/*` endpoints accept requests from localhost only.
 - Do not expose an instance to the public internet without real auth and secrets management.
 
 ---

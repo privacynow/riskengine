@@ -57,6 +57,41 @@ class TestTemplateRedaction:
         assert not contains_embedded_credential("Content-Type: application/json")
 
 
+class TestParamMapRedaction:
+    def test_redacts_sensitive_param_names(self):
+        from services.security import redact_param_map_for_response
+
+        redacted = redact_param_map_for_response(
+            {
+                "Authorization": "Bearer leaked-token",
+                "api_key": "secret-key",
+                "user_id": "12345",
+            }
+        )
+        assert redacted["Authorization"] == "[REDACTED]"
+        assert redacted["api_key"] == "[REDACTED]"
+        assert redacted["user_id"] == "12345"
+        assert "leaked-token" not in str(redacted)
+        assert "secret-key" not in str(redacted)
+
+    def test_redacts_credential_like_values(self):
+        from services.security import redact_param_map_for_response
+
+        redacted = redact_param_map_for_response(
+            {"note": "Authorization: Bearer embedded-secret"}
+        )
+        assert "embedded-secret" not in redacted["note"]
+        assert "[REDACTED]" in redacted["note"]
+
+    def test_redacts_nested_json_credential_values(self):
+        from services.security import redact_param_map_for_response
+
+        raw = '{"headers": {"Authorization": "Bearer secret"}}'
+        redacted = redact_param_map_for_response({"payload": raw})["payload"]
+        assert "secret" not in redacted
+        assert '"Authorization": "[REDACTED]"' in redacted
+
+
 class TestRestrictedEvaluator:
     def test_allows_boolean_logic(self):
         evaluator = create_restricted_evaluator({"kyc_score": 85})

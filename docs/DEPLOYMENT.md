@@ -44,7 +44,15 @@ The app fails startup if neither is set.
 | `DB_PASSWORD` | **Required** — generated into `.env.local`; no default in app code |
 | `POSTGRES_PASSWORD` | Must match `DB_PASSWORD` for the Postgres container |
 
-Postgres binds to **`127.0.0.1:5432`** only (not all interfaces). Override via Compose for non-demo environments.
+Postgres binds to **`127.0.0.1:5432`** only. The app binds to **`127.0.0.1:8000`**. Override via Compose for non-demo environments.
+
+If Postgres authentication fails after regenerating `.env.local`, reset the volume before restarting:
+
+```sh
+docker compose down -v
+bash scripts/create_demo_env.sh
+docker compose up -d --build
+```
 
 ## Optional: sync artifacts to a remote host
 
