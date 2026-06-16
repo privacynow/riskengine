@@ -14,7 +14,7 @@
       v-if="!activeTenant"
       variant="panel"
       title="Select a tenant"
-      message="Choose a tenant in the header to see scoped flows, signals, and audit activity."
+      message="Choose a tenant in the header to see scoped checkpoints, signals, and audit activity."
       icon="building"
     />
 
@@ -27,7 +27,7 @@
 
       <div class="stat-grid overview-stat-grid">
         <StatCard
-          label="Active flows"
+          label="Active checkpoints"
           :value="checkpointCount"
           icon="gitBranch"
           tone="primary"
@@ -59,7 +59,7 @@
           :value="staleVersionLabel"
           icon="layers"
           tone="warning"
-          hint="Flows and signals not on active version"
+          hint="Checkpoints and signals not on active version"
         />
         <StatCard
           label="Peak cost (sample)"
@@ -175,7 +175,7 @@ const signalsLink = computed(() => routeWithTenant({ name: "signals" }));
 const quickActions = computed(() => [
   {
     label: "Run test",
-    hint: "Exercise a flow",
+    hint: "Exercise a checkpoint",
     icon: "flask" as const,
     to: testDecisionsLink.value,
   },
@@ -186,8 +186,8 @@ const quickActions = computed(() => [
     to: signalAuditLink.value,
   },
   {
-    label: "New flow",
-    hint: "Decision flows",
+    label: "New checkpoint",
+    hint: "Checkpoints",
     icon: "plus" as const,
     to: flowsLink.value,
   },

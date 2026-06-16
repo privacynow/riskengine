@@ -2,7 +2,7 @@
   <div class="associations-view">
     <PageHeader
       title="Relationships"
-      subtitle="Inspect and manage signal links across decision flows."
+      subtitle="Inspect and manage signal links across checkpoints."
     />
 
     <DataToolbar>
@@ -152,7 +152,7 @@
                         {{ cp.name }}
                       </li>
                     </ul>
-                    <p v-else class="text-muted">Not linked to any decision flows.</p>
+                    <p v-else class="text-muted">Not linked to any checkpoints.</p>
                   </td>
                 </tr>
               </template>
@@ -171,7 +171,7 @@
               </li>
             </ul>
             <p v-else-if="expandedSignal[s.id]" class="text-muted">
-              Not linked to any decision flows.
+              Not linked to any checkpoints.
             </p>
           </div>
         </template>

@@ -10,7 +10,7 @@
         <div class="result-metric-value">{{ detail.cost_incurred ?? "—" }}</div>
       </div>
       <div class="result-metric">
-        <div class="result-metric-label">Flow</div>
+        <div class="result-metric-label">Checkpoint</div>
         <div class="result-metric-value">{{ detail.checkpoint_name || "—" }}</div>
       </div>
     </div>
@@ -35,7 +35,7 @@
         class="btn-secondary btn-sm"
         :to="flowLink"
       >
-        Open flow
+        Open checkpoint
       </RouterLink>
       <RouterLink class="btn-primary btn-sm" :to="testLink">Run similar test</RouterLink>
     </div>

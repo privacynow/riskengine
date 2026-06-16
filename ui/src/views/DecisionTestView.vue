@@ -2,14 +2,14 @@
   <div class="decision-test-view">
     <PageHeader
       title="Test Lab"
-      subtitle="Controlled pre-promotion harness for decision flows."
+      subtitle="Controlled pre-promotion harness for checkpoints."
     />
 
     <DataToolbar>
       <input
         v-model="searchTerm"
         type="search"
-        placeholder="Search decision flows"
+        placeholder="Search checkpoints"
         class="toolbar-grow"
       />
       <button type="button" class="btn-secondary" @click="search(1)">Search</button>
@@ -26,8 +26,8 @@
 
     <EmptyState
       v-else-if="!checkpoints.length"
-      title="No decision flows loaded"
-      message="Search flows, select one, and run a test."
+      title="No checkpoints loaded"
+      message="Search checkpoints, select one, and run a test."
     />
 
     <WorkbenchLayout v-else :split="!!selectedCheckpointId">
@@ -73,7 +73,7 @@
               class="btn-secondary btn-sm"
               :to="flowDetailLink"
             >
-              Open flow
+              Open checkpoint
             </RouterLink>
           </div>
 
@@ -118,7 +118,7 @@
 
           <FormSection title="Run test">
             <p class="field-hint">
-              Executes the selected flow version server-side without promoting it live.
+              Executes the selected checkpoint version server-side without promoting it live.
             </p>
             <div class="form-actions">
               <button

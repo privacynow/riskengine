@@ -16,14 +16,32 @@
         </span>
       </span>
     </button>
-    <button
-      v-if="showPromote"
-      type="button"
-      class="btn-secondary btn-sm list-row-promote"
-      @click="$emit('promote')"
-    >
-      Promote
-    </button>
+    <div v-if="showLifecycleActions" class="list-row-actions">
+      <button
+        v-if="showPromote"
+        type="button"
+        class="btn-secondary btn-sm list-row-promote"
+        @click="$emit('promote')"
+      >
+        Promote
+      </button>
+      <button
+        v-else-if="showReactivate"
+        type="button"
+        class="btn-secondary btn-sm list-row-promote"
+        @click="$emit('reactivate')"
+      >
+        Reactivate
+      </button>
+      <button
+        v-else-if="showDeactivate"
+        type="button"
+        class="btn-secondary btn-sm list-row-promote"
+        @click="$emit('deactivate')"
+      >
+        Deactivate
+      </button>
+    </div>
   </div>
 </template>
 
@@ -31,6 +49,8 @@
 import { computed } from "vue";
 import type { Signal } from "@/api/types";
 import {
+  canPromoteVersion,
+  canReactivateVersion,
   formatSignalRuntimeCost,
   signalTypeBadge,
   signalTypeLabel,
@@ -46,9 +66,16 @@ const props = defineProps<{
 defineEmits<{
   open: [];
   promote: [];
+  deactivate: [];
+  reactivate: [];
 }>();
 
-const showPromote = computed(() => !props.signal.is_current_version);
+const showPromote = computed(() => canPromoteVersion(props.signal));
+const showReactivate = computed(() => canReactivateVersion(props.signal));
+const showDeactivate = computed(() => !!props.signal.is_current_version);
+const showLifecycleActions = computed(
+  () => showPromote.value || showReactivate.value || showDeactivate.value
+);
 
 const typeVariant = computed(() => signalTypeBadge(props.signal.type));
 const typeLabel = computed(() => signalTypeLabel(props.signal.type));

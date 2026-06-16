@@ -73,3 +73,32 @@ export function formatEvalTimeout(seconds?: number): string {
   if (seconds == null) return "";
   return `${seconds}s eval limit`;
 }
+
+export function promotionActionLabel(action?: string): string {
+  const labels: Record<string, string> = {
+    promote: "Promote",
+    deactivate: "Deactivate",
+    reactivate: "Reactivate",
+  };
+  if (!action) return "Promote";
+  return labels[action] || action;
+}
+
+export function promotionActionBadgeVariant(action?: string): string {
+  if (action === "deactivate") return "inactive";
+  return "current";
+}
+
+export function canPromoteVersion(item: {
+  is_current_version?: boolean;
+  name_has_current_version?: boolean;
+}): boolean {
+  return !item.is_current_version && !!item.name_has_current_version;
+}
+
+export function canReactivateVersion(item: {
+  is_current_version?: boolean;
+  name_has_current_version?: boolean;
+}): boolean {
+  return !item.is_current_version && item.name_has_current_version === false;
+}

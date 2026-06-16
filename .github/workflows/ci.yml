@@ -60,17 +60,7 @@ jobs:
         run: bash scripts/seed_visual_fixture.sh
 
       - name: UI e2e tests
-        run: |
-          cd ui
-          env -i PATH="${PATH}" HOME="${HOME:-}" npx playwright install chromium
-          # shellcheck source=scripts/lib/read_env_var.sh
-          source ../scripts/lib/read_env_var.sh
-          ADMIN_TOKEN="$(read_env_var SMOKE_ADMIN_TOKEN ../.env.local)"
-          env -i PATH="${PATH}" HOME="${HOME:-}" \
-            CI="${CI:-}" \
-            BASE_URL="http://127.0.0.1:8000" \
-            SMOKE_ADMIN_TOKEN="${ADMIN_TOKEN}" \
-            ./node_modules/.bin/playwright test
+        run: bash scripts/run_playwright_ci.sh
 
       - name: Upload Playwright artifacts
         if: failure()

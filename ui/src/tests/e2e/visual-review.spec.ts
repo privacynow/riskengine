@@ -1,5 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
 import { authenticate, assertNoHorizontalOverflow, navigateSidebar, selectVisualFixtureTenant } from "./helpers";
+import { VISUAL_FIXTURE } from "./visual-fixture";
+
+const CHECKPOINTS_NAV = "Checkpoints";
 
 async function neutralizePointer(page: Page) {
   await page.mouse.move(0, 0);
@@ -127,19 +130,20 @@ async function assertWorkbenchListRows(page: Page, root: string) {
   await expect(row.locator(".list-row-open")).toHaveCount(1);
 }
 
-async function prepareFlowsView(page: Page) {
-  await navigateSidebar(page, "Decision Flows");
+async function prepareCheckpointsView(page: Page) {
+  await navigateSidebar(page, CHECKPOINTS_NAV);
   await page.waitForSelector(".checkpoints-view", { timeout: 10000 });
   await page.locator(".checkpoints-view select.toolbar-select").selectOption("active");
-  await page.locator(".checkpoints-view input[type='search'].toolbar-grow").fill("Fixture Flow");
+  await page.locator(".checkpoints-view input[type='search'].toolbar-grow").fill(VISUAL_FIXTURE.checkpointName);
   await page.getByRole("button", { name: "Search" }).click();
   await page.waitForSelector(".checkpoints-view .list-row", { timeout: 10000 });
+  await expect(page.locator(".checkpoints-view .list-row")).toHaveCount(1);
 }
 
 async function prepareSignalsView(page: Page) {
   await navigateSidebar(page, "Signal Library");
   await page.waitForSelector(".signals-view", { timeout: 10000 });
-  await page.locator(".signals-view input[type='search'].toolbar-grow").fill("fixture_signal");
+  await page.locator(".signals-view input[type='search'].toolbar-grow").fill(VISUAL_FIXTURE.signalName);
   await page.getByRole("button", { name: "Search" }).click();
   await page.waitForSelector(".signals-view .list-row", { timeout: 10000 });
 }
@@ -186,7 +190,7 @@ test.describe("visual review — workbench", () => {
   });
 
   test("workbench detail header spacing", async ({ page }) => {
-    await prepareFlowsView(page);
+    await prepareCheckpointsView(page);
     await page.locator(".checkpoints-view .list-row-open").first().click();
     await page.waitForSelector(".workbench-detail-header", { timeout: 10000 });
     await assertWorkbenchDetailHeader(page);
@@ -194,10 +198,10 @@ test.describe("visual review — workbench", () => {
 
   test("flows desktop", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
-    await prepareFlowsView(page);
+    await prepareCheckpointsView(page);
     await page.waitForTimeout(300);
     await neutralizePointer(page);
-    await assertSingleActiveNav(page, "Decision Flows");
+    await assertSingleActiveNav(page, CHECKPOINTS_NAV);
     await assertWorkbenchListRows(page, ".checkpoints-view");
     await assertNoHorizontalOverflow(page);
     await expect(page.locator(".checkpoints-view")).toHaveScreenshot("flows-desktop.png");
@@ -205,19 +209,21 @@ test.describe("visual review — workbench", () => {
 
   test("flows mobile", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await prepareFlowsView(page);
+    await prepareCheckpointsView(page);
     await page.waitForTimeout(300);
     await neutralizePointer(page);
-    await assertSingleActiveNav(page, "Decision Flows");
+    await assertSingleActiveNav(page, CHECKPOINTS_NAV);
     await assertToolbarSearchHeight(page, ".checkpoints-view");
     await assertWorkbenchListRows(page, ".checkpoints-view");
     await assertMobileListRowArrowsHidden(page, ".checkpoints-view");
     await assertNoHorizontalOverflow(page);
-    await expect(page.locator(".checkpoints-view")).toHaveScreenshot("flows-mobile-390.png");
+    const listCard = page.locator(".checkpoints-view .workbench-list-card");
+    await expect(listCard).toBeVisible();
+    await expect(listCard).toHaveScreenshot("flows-mobile-390.png");
   });
 
   test("promote does not open row on Space", async ({ page }) => {
-    await navigateSidebar(page, "Decision Flows");
+    await navigateSidebar(page, CHECKPOINTS_NAV);
     await page.waitForSelector(".checkpoints-view", { timeout: 10000 });
     await page.getByRole("button", { name: "Load all" }).click();
     await page.waitForSelector(".checkpoints-view .list-row", { timeout: 10000 });
@@ -253,7 +259,9 @@ test.describe("visual review — workbench", () => {
     await assertWorkbenchListRows(page, ".signals-view");
     await assertMobileListRowArrowsHidden(page, ".signals-view");
     await assertNoHorizontalOverflow(page);
-    await expect(page.locator(".signals-view")).toHaveScreenshot("signals-mobile-390.png");
+    const listCard = page.locator(".signals-view .workbench-list-card");
+    await expect(listCard).toBeVisible();
+    await expect(listCard).toHaveScreenshot("signals-mobile-390.png");
   });
 });
 
@@ -261,7 +269,7 @@ async function prepareAuditPromotionsView(page: Page) {
   await navigateSidebar(page, "Audit");
   await page.waitForSelector(".audit-search-view", { timeout: 10000 });
   await page.locator(".audit-search-view select.toolbar-select").selectOption("promotions");
-  await page.locator(".audit-search-view input[type='search'].toolbar-grow").fill("Fixture Flow");
+  await page.locator(".audit-search-view input[type='search'].toolbar-grow").fill(VISUAL_FIXTURE.promotionSearch);
   await page.getByRole("button", { name: "Search" }).click();
   await page.waitForSelector(".audit-search-view .list-row", { timeout: 15000 });
   await expect(page.locator(".audit-search-view .list-row")).toHaveCount(1);
@@ -270,7 +278,7 @@ async function prepareAuditPromotionsView(page: Page) {
 async function prepareTestLabView(page: Page) {
   await navigateSidebar(page, "Test Lab");
   await page.waitForSelector(".decision-test-view", { timeout: 10000 });
-  await page.locator(".decision-test-view input[type='search'].toolbar-grow").fill("Fixture Flow");
+  await page.locator(".decision-test-view input[type='search'].toolbar-grow").fill(VISUAL_FIXTURE.checkpointName);
   await page.getByRole("button", { name: "Search" }).click();
   await page.waitForSelector(".decision-test-view .list-row", { timeout: 10000 });
 }
@@ -278,7 +286,7 @@ async function prepareTestLabView(page: Page) {
 async function prepareAssociationsView(page: Page) {
   await navigateSidebar(page, "Relationships");
   await page.waitForSelector(".associations-view", { timeout: 10000 });
-  await page.locator(".associations-view input[type='search'].toolbar-grow").fill("Fixture Flow");
+  await page.locator(".associations-view input[type='search'].toolbar-grow").fill(VISUAL_FIXTURE.checkpointName);
   await page.getByRole("button", { name: "Search" }).click();
   await page.waitForSelector(".associations-view .resource-card, .associations-view tbody tr", { timeout: 10000 });
 }
@@ -286,7 +294,7 @@ async function prepareAssociationsView(page: Page) {
 async function prepareTenantsView(page: Page) {
   await navigateSidebar(page, "Tenants");
   await page.waitForSelector(".tenants-view", { timeout: 10000 });
-  await page.locator(".tenants-view input[type='search'].toolbar-grow").fill("VISUAL FIXTURE BANK");
+  await page.locator(".tenants-view input[type='search'].toolbar-grow").fill(VISUAL_FIXTURE.tenantName);
   await page.getByRole("button", { name: "Search" }).click();
   await page.waitForSelector(".tenants-view .resource-card, .tenants-view tbody tr", { timeout: 10000 });
 }
@@ -305,7 +313,9 @@ test.describe("visual review — operate workbenches", () => {
     await assertSingleActiveNav(page, "Audit");
     await assertWorkbenchListRows(page, ".audit-search-view");
     await assertNoHorizontalOverflow(page);
-    await expect(page.locator(".audit-search-view")).toHaveScreenshot("audit-desktop.png");
+    const listCard = page.locator(".audit-search-view .workbench-list-card");
+    await expect(listCard).toBeVisible();
+    await expect(listCard).toHaveScreenshot("audit-desktop.png");
   });
 
   test("audit mobile", async ({ page }) => {

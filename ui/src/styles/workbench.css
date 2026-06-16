@@ -34,6 +34,15 @@
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
+.workbench-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
 .workbench-detail-header h2,
 .workbench-detail-header h3,
 .workbench-detail-header h4 {

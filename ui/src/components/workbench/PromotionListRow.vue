@@ -24,7 +24,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { PromotionAuditSummary } from "@/api/types";
-import { formatDate } from "@/api/formatters";
+import { formatDate, promotionActionBadgeVariant, promotionActionLabel } from "@/api/formatters";
 import Icon from "@/components/primitives/Icon.vue";
 import StatusBadge from "@/components/workbench/StatusBadge.vue";
 
@@ -37,14 +37,11 @@ defineEmits<{
   open: [];
 }>();
 
-const badgeVariant = computed(() =>
-  props.promotion.resource_type === "signal" ? "inactive" : "current"
-);
-const badgeText = computed(() =>
-  props.promotion.resource_type === "signal" ? "Signal" : "Flow"
-);
+const badgeVariant = computed(() => promotionActionBadgeVariant(props.promotion.action));
+const badgeText = computed(() => promotionActionLabel(props.promotion.action));
 const metaLine = computed(() => {
   const parts = [
+    props.promotion.resource_type === "signal" ? "Signal" : "Checkpoint",
     props.promotion.actor_id ? `Actor ${props.promotion.actor_id}` : null,
     props.promotion.promotion_reason,
   ].filter(Boolean);

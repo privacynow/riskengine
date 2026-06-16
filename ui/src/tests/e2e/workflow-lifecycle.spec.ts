@@ -21,7 +21,7 @@ test("workflow: libraries, test lab, and audit detail", async ({ page }) => {
   await page.getByRole("button", { name: "Load all" }).click();
   await page.waitForSelector(".signals-view .list-row", { timeout: 10000 });
 
-  await navigateSidebar(page, "Decision Flows");
+  await navigateSidebar(page, "Checkpoints");
   await page.waitForSelector(".checkpoints-view", { timeout: 10000 });
   await page.getByRole("button", { name: "Load all" }).click();
   await page.waitForSelector(".checkpoints-view .list-row", { timeout: 10000 });

@@ -334,6 +334,52 @@ export const useSignalStore = defineStore("signal", {
       }
     },
 
+    async deactivateVersion(signalId: string) {
+      const signal = this.items.find((s) => s.id === signalId);
+      if (!signal?.is_current_version) return;
+      const { promote } = usePromoteDialog();
+      const reason = await promote({
+        title: "Deactivate signal",
+        message: `Remove "${signal.name}" from live runtime. Linked checkpoints will skip this signal until another version is promoted or reactivated.`,
+        confirmLabel: "Deactivate",
+        reasonPlaceholder: "Why is this signal being deactivated?",
+      });
+      if (!reason) return;
+      try {
+        await signalsApi.deactivate(signalId, { promotionReason: reason });
+        await this.loadAll(this.page);
+        if (this.selectedId === signalId) {
+          await this.selectSignal(signalId);
+        }
+        useUiStore().notify("Signal deactivated.");
+      } catch (err) {
+        useAuthStore().handleApiError(err);
+      }
+    },
+
+    async reactivateVersion(signalId: string) {
+      const signal = this.items.find((s) => s.id === signalId);
+      if (!signal || signal.is_current_version || signal.name_has_current_version !== false) return;
+      const { promote } = usePromoteDialog();
+      const reason = await promote({
+        title: "Reactivate signal",
+        message: `Restore "${signal.name}" as the live current version for this tenant.`,
+        confirmLabel: "Reactivate",
+        reasonPlaceholder: "Why is this signal being reactivated?",
+      });
+      if (!reason) return;
+      try {
+        await signalsApi.reactivate(signalId, { promotionReason: reason });
+        await this.loadAll(this.page);
+        if (this.selectedId === signalId) {
+          await this.selectSignal(signalId);
+        }
+        useUiStore().notify("Signal reactivated.");
+      } catch (err) {
+        useAuthStore().handleApiError(err);
+      }
+    },
+
     async searchCheckpointsForEdit(signalId: string, page: number) {
       const tenantId = requireTenantId();
       if (!tenantId) return;

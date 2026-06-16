@@ -152,6 +152,7 @@ def _admin_signal_item_from_row(r, *, include_current: bool) -> dict:
     }
     if include_current:
         item["is_current_version"] = r[20]
+        item["name_has_current_version"] = r[21]
     return item
 
 
@@ -716,7 +717,13 @@ def list_checkpoints(tenant_id: OptionalUuidStr = None, page: int = 1, size: int
                    CASE 
                        WHEN cv.checkpoint_id IS NOT NULL THEN true 
                        ELSE false 
-                   END as is_current_version
+                   END as is_current_version,
+                   EXISTS (
+                       SELECT 1
+                         FROM checkpoint_current_version cvn
+                        WHERE cvn.tenant_id = c.tenant_id
+                          AND cvn.name = c.name
+                   ) as name_has_current_version
             FROM checkpoints c
             LEFT JOIN tenants t ON c.tenant_id = t.id
             LEFT JOIN checkpoint_current_version cv ON cv.checkpoint_id = c.id
@@ -765,6 +772,7 @@ def list_checkpoints(tenant_id: OptionalUuidStr = None, page: int = 1, size: int
                 "tenant_name": row[12],
                 "signals": row[13],
                 "is_current_version": row[14],
+                "name_has_current_version": row[15],
                 "param_placeholders": extract_placeholders_from_text(row[5]) if row[5] else []
             }
             checkpoints.append(checkpoint)
@@ -810,7 +818,13 @@ def get_checkpoint(checkpoint_id: UuidStr):
             """
             SELECT c.id, c.tenant_id, c.name, c.description, c.type, c.dsl_expression,
                    c.method_of_call, c.max_cost, c.override_cost_flag, c.timeout_seconds,
-                   CASE WHEN cv.checkpoint_id IS NOT NULL THEN true ELSE false END
+                   CASE WHEN cv.checkpoint_id IS NOT NULL THEN true ELSE false END,
+                   EXISTS (
+                       SELECT 1
+                         FROM checkpoint_current_version cvn
+                        WHERE cvn.tenant_id = c.tenant_id
+                          AND cvn.name = c.name
+                   )
               FROM checkpoints c
               LEFT JOIN checkpoint_current_version cv ON cv.checkpoint_id = c.id
              WHERE c.id = %s
@@ -832,6 +846,7 @@ def get_checkpoint(checkpoint_id: UuidStr):
             "override_cost_flag": row[8],
             "timeout_seconds": row[9],
             "is_current_version": row[10],
+            "name_has_current_version": row[11],
         }
     finally:
         if conn:
@@ -911,7 +926,13 @@ def list_signals(
                        s.request_body_template, s.request_headers_template,
                        s.bearer_token, s.allow_caching, s.global_reuse,
                        s.function_params_template,
-                       CASE WHEN scv.signal_id IS NOT NULL THEN true ELSE false END as is_current_version
+                       CASE WHEN scv.signal_id IS NOT NULL THEN true ELSE false END as is_current_version,
+                       EXISTS (
+                           SELECT 1
+                             FROM signal_current_version scvn
+                            WHERE scvn.tenant_id = s.tenant_id
+                              AND scvn.name = s.name
+                       ) as name_has_current_version
                   FROM signals s
                   JOIN checkpoint_signals cs ON cs.signal_id = s.id
                   LEFT JOIN signal_current_version scv ON scv.signal_id = s.id
@@ -930,7 +951,13 @@ def list_signals(
                        s.request_body_template, s.request_headers_template,
                        s.bearer_token, s.allow_caching, s.global_reuse,
                        s.function_params_template,
-                       CASE WHEN scv.signal_id IS NOT NULL THEN true ELSE false END as is_current_version
+                       CASE WHEN scv.signal_id IS NOT NULL THEN true ELSE false END as is_current_version,
+                       EXISTS (
+                           SELECT 1
+                             FROM signal_current_version scvn
+                            WHERE scvn.tenant_id = s.tenant_id
+                              AND scvn.name = s.name
+                       ) as name_has_current_version
                   FROM signals s
                   LEFT JOIN signal_current_version scv ON scv.signal_id = s.id
                  WHERE s.tenant_id = %s
@@ -948,7 +975,13 @@ def list_signals(
                        s.request_body_template, s.request_headers_template,
                        s.bearer_token, s.allow_caching, s.global_reuse,
                        s.function_params_template,
-                       CASE WHEN scv.signal_id IS NOT NULL THEN true ELSE false END as is_current_version
+                       CASE WHEN scv.signal_id IS NOT NULL THEN true ELSE false END as is_current_version,
+                       EXISTS (
+                           SELECT 1
+                             FROM signal_current_version scvn
+                            WHERE scvn.tenant_id = s.tenant_id
+                              AND scvn.name = s.name
+                       ) as name_has_current_version
                   FROM signals s
                   LEFT JOIN signal_current_version scv ON scv.signal_id = s.id
             """
@@ -1000,7 +1033,13 @@ def get_signal(signal_id: UuidStr):
                    s.request_body_template, s.request_headers_template,
                    s.bearer_token, s.allow_caching, s.global_reuse,
                    s.function_params_template,
-                   CASE WHEN scv.signal_id IS NOT NULL THEN true ELSE false END AS is_current_version
+                   CASE WHEN scv.signal_id IS NOT NULL THEN true ELSE false END AS is_current_version,
+                   EXISTS (
+                       SELECT 1
+                         FROM signal_current_version scvn
+                        WHERE scvn.tenant_id = s.tenant_id
+                          AND scvn.name = s.name
+                   ) AS name_has_current_version
               FROM signals s
               LEFT JOIN signal_current_version scv ON scv.signal_id = s.id
              WHERE s.id = %s
@@ -1351,7 +1390,7 @@ def search_tenants(q: str, page: int = 1, size: int = 10):
 @router.get("/ui/search_checkpoints")
 def search_checkpoints(
     q: str,
-    tenant_id: Optional[str] = None,
+    tenant_id: OptionalUuidStr = None,
     page: int = 1,
     size: int = 10,
     active_only: bool = False,
@@ -1367,7 +1406,13 @@ def search_checkpoints(
         like = f"%{q}%"
         base_query = """
             SELECT c.id, c.tenant_id, c.name, c.description, c.type, c.dsl_expression,
-                   CASE WHEN cv.checkpoint_id IS NOT NULL THEN true ELSE false END as is_current_version
+                   CASE WHEN cv.checkpoint_id IS NOT NULL THEN true ELSE false END as is_current_version,
+                   EXISTS (
+                       SELECT 1
+                         FROM checkpoint_current_version cvn
+                        WHERE cvn.tenant_id = c.tenant_id
+                          AND cvn.name = c.name
+                   ) as name_has_current_version
               FROM checkpoints c
               LEFT JOIN checkpoint_current_version cv ON cv.checkpoint_id = c.id
              WHERE (c.name ILIKE %s
@@ -1398,7 +1443,8 @@ def search_checkpoints(
                 "description": r[3],
                 "type": r[4],
                 "dsl_expression": r[5],
-                "is_current_version": r[6]
+                "is_current_version": r[6],
+                "name_has_current_version": r[7],
             })
         return build_paginated_response(items, total, page, size)
     finally:
@@ -1407,7 +1453,7 @@ def search_checkpoints(
 
 
 @router.get("/ui/search_signals")
-def search_signals(q: str, tenant_id: Optional[str] = None, page: int = 1, size: int = 10, active_only: bool = False):
+def search_signals(q: str, tenant_id: OptionalUuidStr = None, page: int = 1, size: int = 10, active_only: bool = False):
     """
     Searches signals by partial match in name, id::text, type, description,
     or method_of_call. Returns placeholders too.
@@ -1424,7 +1470,13 @@ def search_signals(q: str, tenant_id: Optional[str] = None, page: int = 1, size:
                    s.request_url_params_template, s.request_body_template,
                    s.request_headers_template, s.bearer_token, s.allow_caching,
                    s.global_reuse, s.function_params_template,
-                   CASE WHEN scv.signal_id IS NOT NULL THEN true ELSE false END as is_current_version
+                   CASE WHEN scv.signal_id IS NOT NULL THEN true ELSE false END as is_current_version,
+                   EXISTS (
+                       SELECT 1
+                         FROM signal_current_version scvn
+                        WHERE scvn.tenant_id = s.tenant_id
+                          AND scvn.name = s.name
+                   ) as name_has_current_version
               FROM signals s
               LEFT JOIN signal_current_version scv ON scv.signal_id = s.id
              WHERE (s.name ILIKE %s
@@ -1457,7 +1509,7 @@ def search_decisions(
     q: Optional[str] = None,
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
-    tenant_id: Optional[str] = None,
+    tenant_id: OptionalUuidStr = None,
     page: int = 1,
     size: int = 10
 ):
@@ -1569,7 +1621,7 @@ def search_signal_logs(
 
 @router.get("/ui/promotion_audit")
 def search_promotion_audit(
-    tenant_id: Optional[str] = None,
+    tenant_id: OptionalUuidStr = None,
     q: Optional[str] = None,
     page: int = 1,
     size: int = 10,
@@ -1625,7 +1677,7 @@ def _promotion_audit_row_to_item(row) -> dict:
 
 
 @router.get("/ui/promotion_audit/{promotion_id}")
-def get_promotion_audit(promotion_id: UuidStr, tenant_id: Optional[str] = None):
+def get_promotion_audit(promotion_id: UuidStr, tenant_id: OptionalUuidStr = None):
     conn = None
     try:
         conn = get_db_connection()

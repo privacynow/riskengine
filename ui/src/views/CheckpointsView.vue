@@ -1,32 +1,32 @@
 <template>
   <div class="checkpoints-view">
     <PageHeader
-      title="Decision Flows"
+      title="Checkpoints"
       subtitle="Design checkpoints, wire signals, and manage versions."
     />
 
     <DataToolbar>
       <select v-model="activeFilter" class="toolbar-select">
         <option value="active">Active only</option>
-        <option value="all">All flows</option>
+        <option value="all">All checkpoints</option>
       </select>
       <input
         v-model="searchTerm"
         type="search"
-        placeholder="Search decision flows"
+        placeholder="Search checkpoints"
         class="toolbar-grow"
       />
       <button type="button" class="btn-secondary" @click="search(1)">Search</button>
       <button type="button" class="btn-secondary" @click="loadAll(1)">Load all</button>
       <button type="button" class="btn-primary" @click="toggleCreateForm">
-        {{ showCreateForm ? "Close" : "New flow" }}
+        {{ showCreateForm ? "Close" : "New checkpoint" }}
       </button>
     </DataToolbar>
 
     <EmptyState
       v-if="!activeTenant"
       title="Select a tenant"
-      message="Use the tenant bar above to scope decision flows."
+      message="Use the tenant bar above to scope checkpoints."
     />
 
     <div v-else>
@@ -57,10 +57,12 @@
                 :selected="selectedId === cp.id"
                 @open="openFlow(cp.id)"
                 @promote="setCurrentVersion(cp.id)"
+                @deactivate="deactivateVersion(cp.id)"
+                @reactivate="reactivateVersion(cp.id)"
               />
             </div>
           </div>
-          <EmptyState v-else title="No decision flows" message="Create a flow for this tenant." />
+          <EmptyState v-else title="No checkpoints" message="Create a checkpoint for this tenant." />
 
           <AppPagination
             :page="page"
@@ -81,7 +83,33 @@
                 "
               />
             </div>
-            <button type="button" class="btn-ghost btn-sm" @click="closePanel">Close</button>
+            <div class="workbench-detail-actions">
+              <button
+                v-if="selectedCheckpoint.is_current_version"
+                type="button"
+                class="btn-secondary btn-sm"
+                @click="deactivateVersion(selectedCheckpoint.id)"
+              >
+                Deactivate
+              </button>
+              <button
+                v-else-if="canPromoteSelected"
+                type="button"
+                class="btn-secondary btn-sm"
+                @click="setCurrentVersion(selectedCheckpoint.id)"
+              >
+                Promote
+              </button>
+              <button
+                v-else-if="canReactivateSelected"
+                type="button"
+                class="btn-secondary btn-sm"
+                @click="reactivateVersion(selectedCheckpoint.id)"
+              >
+                Reactivate
+              </button>
+              <button type="button" class="btn-ghost btn-sm" @click="closePanel">Close</button>
+            </div>
           </div>
 
           <WorkbenchTabs v-model="detailTab" :tabs="detailTabs" />
@@ -129,6 +157,7 @@ import { computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
 import type { CheckpointDraft } from "@/api/types";
+import { canPromoteVersion, canReactivateVersion } from "@/api/formatters";
 import { routeWithTenant } from "@/app/tenantNav";
 import DataToolbar from "@/components/primitives/DataToolbar.vue";
 import EmptyState from "@/components/primitives/EmptyState.vue";
@@ -165,6 +194,12 @@ const {
 const { activeTenant } = storeToRefs(tenantStore);
 
 const selectedCheckpoint = computed(() => checkpointStore.selectedCheckpoint);
+const canPromoteSelected = computed(() =>
+  selectedCheckpoint.value ? canPromoteVersion(selectedCheckpoint.value) : false
+);
+const canReactivateSelected = computed(() =>
+  selectedCheckpoint.value ? canReactivateVersion(selectedCheckpoint.value) : false
+);
 
 const detailTabs = [
   { id: "summary", label: "Summary" },
@@ -182,6 +217,8 @@ const {
   saveDetail,
   persistDetailAssociations,
   setCurrentVersion,
+  deactivateVersion,
+  reactivateVersion,
   loadDraftSignals,
   addSignalToDraft,
   removeSignalFromDraft,

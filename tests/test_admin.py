@@ -520,11 +520,13 @@ class TestAdminHygiene:
         ).json()
         assert current["name"] == "Onboarding"
         assert current["is_current_version"] is True
+        assert current["name_has_current_version"] is True
         detail = client.get(
             f"/ui/checkpoints/{current['id']}",
             headers=auth_header(TEST_ADMIN_TOKEN),
         ).json()
         assert detail["is_current_version"] is True
+        assert detail["name_has_current_version"] is True
 
     def test_admin_get_signal_includes_is_current_version(self, client):
         listed = client.get(
@@ -1110,6 +1112,7 @@ class TestAdminHygiene:
             headers=auth_header(TEST_ADMIN_TOKEN),
         ).json()
         assert detail["is_current_version"] is False
+        assert detail["name_has_current_version"] is False
 
         runtime = client.post(
             "/decisions",
@@ -1125,6 +1128,11 @@ class TestAdminHygiene:
         )
         assert reactivated.status_code == 200
         assert reactivated.json()["action"] == "reactivated"
+        after_reactivate = client.get(
+            f"/ui/checkpoints/{checkpoint_id}",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        ).json()
+        assert after_reactivate["name_has_current_version"] is True
 
         audit = client.get(
             f"/ui/promotion_audit?tenant_id={SAMPLE_TENANT}&q={detail['name']}&page=1&size=10",
@@ -1170,6 +1178,13 @@ class TestAdminHygiene:
             headers=auth_header(TEST_ADMIN_TOKEN),
             json={"promotionReason": "Promote second version"},
         ).status_code == 200
+
+        stale_detail = client.get(
+            f"/ui/checkpoints/{first_id}",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        ).json()
+        assert stale_detail["is_current_version"] is False
+        assert stale_detail["name_has_current_version"] is True
 
         reactivate = client.post(
             f"/ui/checkpoints/{first_id}/reactivate",

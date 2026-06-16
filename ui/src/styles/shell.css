@@ -174,7 +174,8 @@
   grid-template-columns: auto minmax(0, 1fr);
 }
 
-.list-row--workbench:has(.list-row-promote) {
+.list-row--workbench:has(.list-row-promote),
+.list-row--workbench:has(.list-row-actions) {
   grid-template-columns: auto minmax(0, 1fr) auto;
 }
 
@@ -200,9 +201,15 @@
   border-radius: var(--radius-sm);
 }
 
-.list-row-promote {
+.list-row-promote,
+.list-row-actions {
   flex-shrink: 0;
   align-self: center;
+}
+
+.list-row-actions {
+  display: flex;
+  gap: var(--space-2);
 }
 
 .list-row-body {
@@ -289,7 +296,7 @@
     align-items: start;
   }
 
-  .list-row--workbench:not(:has(.list-row-promote)) {
+  .list-row--workbench:not(:has(.list-row-promote)):not(:has(.list-row-actions)) {
     grid-template-areas: "badge open";
   }
 

@@ -58,7 +58,7 @@ const navSections = computed(() => {
   const design: NavEntry[] = [
     {
       routeName: "checkpoints",
-      label: "Decision Flows",
+      label: "Checkpoints",
       icon: "gitBranch",
       to: routeWithTenant({ name: "checkpoints" }),
     },

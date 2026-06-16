@@ -66,7 +66,7 @@ const selectable = computed(() => !props.to);
 
 const outcomeLabel = computed(() => props.decision.final_decision_value || "—");
 const outcomeVariant = computed(() => decisionOutcomeVariant(props.decision.final_decision_value));
-const flowName = computed(() => props.decision.checkpoint_name || "Unknown flow");
+const flowName = computed(() => props.decision.checkpoint_name || "Unknown checkpoint");
 const metaLine = computed(() => {
   const parts = [
     props.decision.applicant_id ? `Applicant ${props.decision.applicant_id}` : null,

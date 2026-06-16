@@ -45,4 +45,18 @@ export const checkpointsApi = {
       body: JSON.stringify(payload),
     });
   },
+  deactivate(id: string, payload: { promotionReason: string }) {
+    return httpJson<unknown>(`/ui/checkpoints/${id}/deactivate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  },
+  reactivate(id: string, payload: { promotionReason: string }) {
+    return httpJson<unknown>(`/ui/checkpoints/${id}/reactivate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  },
 };

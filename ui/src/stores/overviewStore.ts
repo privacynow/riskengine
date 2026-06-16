@@ -48,10 +48,10 @@ export const useOverviewStore = defineStore("overview", {
     },
     costPressureHint(): string {
       if (!this.maxFlowCostCap) {
-        return `No caps in first ${FLOW_CAP_SAMPLE_SIZE} active flows`;
+        return `No caps in first ${FLOW_CAP_SAMPLE_SIZE} active checkpoints`;
       }
       const pct = Math.round((this.peakDecisionCost / this.maxFlowCostCap) * 100);
-      return `${pct}% of sample cap (first ${FLOW_CAP_SAMPLE_SIZE} flows)`;
+      return `${pct}% of sample cap (first ${FLOW_CAP_SAMPLE_SIZE} checkpoints)`;
     },
     peakCostLabel(): string {
       return formatCost(this.peakDecisionCost);

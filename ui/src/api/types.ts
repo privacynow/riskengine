@@ -31,6 +31,7 @@ export type Checkpoint = {
   override_cost_flag?: boolean;
   timeout_seconds?: number;
   is_current_version?: boolean;
+  name_has_current_version?: boolean;
 };
 
 export type Signal = {
@@ -55,6 +56,7 @@ export type Signal = {
   global_reuse?: boolean;
   function_params_template?: string;
   is_current_version?: boolean;
+  name_has_current_version?: boolean;
   param_placeholders?: string[];
 };
 
@@ -188,6 +190,7 @@ export type PromotionAuditSummary = {
   resource_name: string;
   actor_id: string;
   promotion_reason: string;
+  action?: "promote" | "deactivate" | "reactivate" | string;
   source?: string;
   created_at?: string;
 };
