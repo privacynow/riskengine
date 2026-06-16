@@ -18,6 +18,7 @@ COPY routes/ ./routes/
 COPY services/ ./services/
 COPY demo/ ./demo/
 COPY sql/ ./sql/
+# Tests support CI/local `docker compose exec risk-engine pytest`; not a minimal prod image.
 COPY tests/ ./tests/
 COPY pytest.ini ./
 COPY README.md ./

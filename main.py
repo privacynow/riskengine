@@ -93,6 +93,6 @@ app.include_router(admin.router)
 UI_DIST = Path(__file__).resolve().parent / "ui" / "dist"
 if not UI_DIST.is_dir():
     raise RuntimeError(
-        f"Admin UI build missing at {UI_DIST}. Run: cd ui && npm install && npm run build"
+        f"Admin UI build missing at {UI_DIST}. Run: cd ui && npm ci && npm run build"
     )
 app.mount("/admin", StaticFiles(directory=str(UI_DIST), html=True), name="admin")
