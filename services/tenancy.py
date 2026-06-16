@@ -191,6 +191,26 @@ CHECKPOINT_SIGNAL_DETAILS_SQL = """
 """
 
 
+def fetch_checkpoint_row_by_id(cur: cursor, tenant_id: str, checkpoint_id: str) -> CheckpointRow:
+    cur.execute(
+        """
+        SELECT c.id, c.tenant_id, c.name, c.description, c.type,
+               c.dsl_expression, c.method_of_call, c.max_cost,
+               c.override_cost_flag, c.timeout_seconds
+          FROM checkpoints c
+         WHERE c.id = %s AND c.tenant_id = %s
+        """,
+        (checkpoint_id, tenant_id),
+    )
+    row = cur.fetchone()
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Checkpoint '{checkpoint_id}' not found for tenant.",
+        )
+    return CheckpointRow.from_db(row)
+
+
 def fetch_current_checkpoint_row(cur: cursor, tenant_id: str, checkpoint_name: str) -> CheckpointRow:
     cur.execute(
         """

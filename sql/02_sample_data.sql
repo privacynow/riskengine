@@ -1,6 +1,18 @@
 -- ==========================================================================
--- SAMPLE DATA DML SCRIPT (sample_data.sql)
--- Populate sample tenant, checkpoints, signals, etc.
+-- SAMPLE DATA (02_sample_data.sql)
+-- Idempotent demo seed for Docker init and integration tests.
+-- Stable IDs: see sql/README.md
+-- ==========================================================================
+--
+-- Sections:
+--   1. SAMPLE LENDING tenant + decision flows
+--   2. Signals (variable / endpoint / function / expression)
+--   3. Checkpoint ↔ signal associations
+--   4. Signal variable values
+--   5. OTHER BANK tenant (multi-tenant isolation)
+--   6. Current-version pointers
+--   7. Audit placeholder decision_log
+--   8. Inactive signal (strict resolution demo)
 -- ==========================================================================
 
 \c risk_engine_db

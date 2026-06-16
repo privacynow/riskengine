@@ -1,39 +1,43 @@
 <template>
-  <nav class="sidebar-nav" :class="{ open: $root.mobileNavOpen }">
-    <button
-      v-for="item in items"
-      :key="item.id"
-      type="button"
+  <nav class="sidebar-nav" :class="{ open: mobileNavOpen }">
+    <RouterLink
+      v-for="item in navItems"
+      :key="item.name"
+      :to="item.to"
       class="nav-button"
-      :class="{ active: $root.view === item.id }"
-      @click="navigate(item.id)"
+      active-class="active"
+      @click="closeMobileNav"
     >
       {{ item.label }}
-    </button>
+    </RouterLink>
   </nav>
 </template>
 
-<script>
-export default {
-  name: "SidebarNav",
-  data: function () {
-    return {
-      items: [
-        { id: "overview", label: "Overview" },
-        { id: "tenants", label: "Tenants" },
-        { id: "checkpoints", label: "Checkpoints" },
-        { id: "signals", label: "Signals" },
-        { id: "associations", label: "Associations" },
-        { id: "audit", label: "Audit" },
-        { id: "test", label: "Test decisions" },
-      ],
-    };
+<script setup lang="ts">
+import { computed } from "vue";
+import { storeToRefs } from "pinia";
+import { routeWithTenant } from "@/app/tenantNav";
+import { useUiStore } from "@/stores/uiStore";
+
+const ui = useUiStore();
+const { mobileNavOpen } = storeToRefs(ui);
+const { closeMobileNav } = ui;
+
+const navItems = computed(() => [
+  { name: "overview", label: "Overview", to: routeWithTenant({ name: "overview" }) },
+  { name: "tenants", label: "Tenants", to: routeWithTenant({ name: "tenants" }) },
+  { name: "checkpoints", label: "Decision Flows", to: routeWithTenant({ name: "checkpoints" }) },
+  { name: "signals", label: "Signal Library", to: routeWithTenant({ name: "signals" }) },
+  {
+    name: "associations",
+    label: "Relationships",
+    to: routeWithTenant({ name: "associations" }),
   },
-  methods: {
-    navigate: function (view) {
-      this.$root.switchView(view);
-      this.$root.mobileNavOpen = false;
-    },
+  { name: "audit", label: "Audit", to: routeWithTenant({ name: "audit-decisions" }) },
+  {
+    name: "test",
+    label: "Test Lab",
+    to: routeWithTenant({ name: "test-decisions" }),
   },
-};
+]);
 </script>

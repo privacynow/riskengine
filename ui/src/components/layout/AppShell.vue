@@ -1,7 +1,7 @@
 <template>
-  <div class="app-shell" :class="{ 'drawer-open': $root.mobileNavOpen }">
-    <div class="demo-banner">
-      Local demo only — do not expose publicly without real auth.
+  <div class="app-shell" :class="{ 'drawer-open': mobileNavOpen }">
+    <div v-if="showDevDemoUi" class="demo-banner">
+      Development build — bearer-token auth for local use only.
     </div>
     <aside class="sidebar">
       <div class="sidebar-brand">
@@ -12,56 +12,32 @@
     </aside>
     <div class="app-column">
       <TopBar />
-      <TenantContext />
+      <TenantSwitcher />
       <NoticeBanner />
       <main class="page-content">
-        <OverviewView v-if="$root.view === 'overview'" />
-        <TenantsView v-else-if="$root.view === 'tenants'" />
-        <CheckpointsView v-else-if="$root.view === 'checkpoints'" />
-        <SignalsView v-else-if="$root.view === 'signals'" />
-        <AssociationsView v-else-if="$root.view === 'associations'" />
-        <AuditSearchView v-else-if="$root.view === 'audit'" />
-        <DecisionTestView v-else-if="$root.view === 'test'" />
+        <slot />
       </main>
     </div>
     <div
       class="drawer-backdrop"
-      :class="{ visible: $root.mobileNavOpen }"
-      @click="$root.mobileNavOpen = false"
+      :class="{ visible: mobileNavOpen }"
+      @click="closeMobileNav"
     ></div>
   </div>
 </template>
 
-<script>
+<script setup lang="ts">
+import { storeToRefs } from "pinia";
+import { SHOW_DEV_DEMO_UI } from "@/app/config";
 import SidebarNav from "@/components/layout/SidebarNav.vue";
 import TopBar from "@/components/layout/TopBar.vue";
-import TenantContext from "@/components/layout/TenantContext.vue";
+import TenantSwitcher from "@/components/layout/TenantSwitcher.vue";
 import NoticeBanner from "@/components/layout/NoticeBanner.vue";
-import OverviewView from "@/components/overview/OverviewView.vue";
-import TenantsView from "@/components/tenants/TenantsView.vue";
-import CheckpointsView from "@/components/checkpoints/CheckpointsView.vue";
-import SignalsView from "@/components/signals/SignalsView.vue";
-import AssociationsView from "@/components/associations/AssociationsView.vue";
-import AuditSearchView from "@/components/search/AuditSearchView.vue";
-import DecisionTestView from "@/components/test/DecisionTestView.vue";
+import { useUiStore } from "@/stores/uiStore";
 
-export default {
-  name: "AppShell",
-  data() {
-    return { faviconUrl: import.meta.env.BASE_URL + "assets/favicon.svg" };
-  },
-  components: {
-    SidebarNav,
-    TopBar,
-    TenantContext,
-    NoticeBanner,
-    OverviewView,
-    TenantsView,
-    CheckpointsView,
-    SignalsView,
-    AssociationsView,
-    AuditSearchView,
-    DecisionTestView,
-  },
-};
+const ui = useUiStore();
+const { mobileNavOpen } = storeToRefs(ui);
+const { closeMobileNav } = ui;
+const faviconUrl = import.meta.env.BASE_URL + "assets/favicon.svg";
+const showDevDemoUi = SHOW_DEV_DEMO_UI;
 </script>

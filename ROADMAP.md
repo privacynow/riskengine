@@ -9,9 +9,11 @@ Working prototype — not production-ready.
 - Current-version resolution for checkpoints and signals
 - Decision audit logging (`decision_log`, `signal_log`, `signal_log_values`)
 - Demo bearer auth via environment JSON only (no committed tokens)
-- Admin UI for CRUD, tenant copy, and test decisions
+- Admin UI: Vue 3 + TypeScript + Vite + Pinia + Vue Router (`ui/`)
+- Admin UI tenant scoping via URL `?tenant=` and `tenant_id` on `/ui/*` list/search calls
 - Docker Compose local bootstrap with loopback binding
 - Pytest coverage for auth, tenancy, security redaction, and admin hygiene
+- CI: frontend typecheck/lint/unit/build, pytest, API smoke, UI smoke, Playwright e2e
 - OpenAPI at `/docs` (hand-maintained YAML removed)
 
 ## Known limitations (demo)
@@ -23,6 +25,7 @@ Working prototype — not production-ready.
 - Per-process in-memory cache only
 - Fixed ~5s HTTP client timeout; `can_run_in_parallel` not enforced
 - Admin routes use legacy in-place updates for some config changes
+- Admin UI has no version history/compare UX (backend still mutates rows in place)
 
 ## Near-term hardening (showcase)
 
@@ -30,12 +33,14 @@ Working prototype — not production-ready.
 - [x] Tenant copy without secret transfer; associations by signal name
 - [x] UI signal types aligned with backend endpoint types
 - [x] Structured admin UI notifications (replacing raw `alert()`)
-- [x] CI: pytest + smoke on push/PR
+- [x] CI: pytest + API smoke on push/PR
 - [x] Runtime Docker image: Python-only (whitelist COPY; no Node artifacts)
-- [x] Further UI modularization (Vue 3 + Vite under `ui/src/`)
-- [x] Browser/E2E smoke (`scripts/ui_smoke.sh` + Playwright)
-- [ ] Admin mutation response contract normalization
-- [ ] Curate sample SQL fixtures
+- [x] Admin UI: Vue 3 + TypeScript + Pinia + Router under `ui/src/`
+- [x] Admin UI tenant lifecycle (deep links, auth bootstrap, tenant switch reload)
+- [x] Browser smoke (`scripts/ui_smoke.sh`) and Playwright e2e (`ui/src/tests/e2e/`, CI)
+- [x] Frontend quality gates in CI (typecheck, lint, vitest, build)
+- [x] Admin mutation response contract normalization (`ok`, `action`, `id`)
+- [x] Curate sample SQL fixtures (`sql/README.md`, section map in seed file)
 
 ## Production gaps (out of scope for demo)
 

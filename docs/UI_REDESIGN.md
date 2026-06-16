@@ -1,77 +1,115 @@
-# Admin UI (Vue 3 + Vite)
+# Admin UI architecture
 
-The Decision Engine admin console is a **Vue 3 + Vite** single-page app, compiled to static assets and served by FastAPI at `/admin/`.
+The admin console is a compiled Vue 3 SPA. FastAPI serves `ui/dist/` at `/admin/`; there is no server-side rendering and no runtime SFC loader.
 
-## Why compiled frontend
+## Stack
 
-- No runtime SFC loading or browser HTML parsing bugs
-- Standard Vue 3 SFC compilation and tooling
-- Plain static JS/CSS/HTML at runtime — easy to cache and serve
-- Browser smoke tests verify rendered workflows
+| Layer | Choice |
+|-------|--------|
+| UI | Vue 3, Composition API, `<script setup lang="ts">` |
+| Build | Vite 8, `base: /admin/` |
+| State | Pinia stores per domain |
+| Routing | Vue Router 4, history mode |
+| HTTP | Typed modules under `ui/src/api/` |
+| Unit tests | Vitest (`ui/src/tests/unit/`) |
+| Browser tests | Playwright (`ui/src/tests/e2e/`) plus `scripts/ui_browser_smoke.mjs` |
 
-## Layout
+Node.js is build-time only. The Python Docker image contains `ui/dist/` and no `node_modules`.
+
+## Directory layout
 
 ```text
 ui/
   package.json
   package-lock.json
-  vite.config.js
-  index.html              # Vite entry (dev)
-  public/assets/          # static files copied to dist (favicon)
+  vite.config.ts
+  playwright.config.ts
+  index.html
+  public/assets/
   src/
-    main.js
+    app/
+      main.ts             # entry (referenced from index.html)
+      router.ts
+      pinia.ts
+      config.ts
+      routeLoader.ts
+      tenantScope.ts
+      tenantNav.ts        # routeWithTenant — preserve ?tenant= on navigation
     App.vue
-    api/                  # fetch client, auth, formatters
-    stores/               # notices (transitional)
-    mixins/               # domain logic on App.vue root ($root in views)
-    components/           # layout, common, feature views
+    api/
+    stores/
+    views/
+    components/
+      layout/
+      primitives/
+      workbench/          # PageHeader, WorkbenchLayout, TraceTimeline, …
+      domain/             # forms + audit detail panels
+    composables/
     styles/
-  dist/                   # Vite build output (gitignored; built in Docker/CI)
+    tests/
+      unit/
+      e2e/
+  dist/                     # gitignored
 ```
 
-## Build toolchain
+## Navigation and data loading
 
-Node is used **only at build time**, not in the Python runtime container:
+**Router** owns all screen changes. Paths are deep-linkable (`/admin/signals`, `/admin/checkpoints?tenant=<uuid>`).
 
-- **Docker:** multi-stage `Dockerfile` runs `npm ci` + `npm run build` in `node:24-slim`, copies `ui/dist/` into the Python image
-- **Local:** `cd ui && npm ci && npm run build` before `uvicorn` if not using Docker
+**`routeLoader.ts`** maps route names to store actions (`loadAll`, `fetchPage`, `reset`, etc.). It runs:
 
-Lockfiles (`ui/package-lock.json`, `scripts/package-lock.json`) are committed for reproducible installs.
+- In `router.beforeEach` when the session is valid (including after `setActiveTenant()` updates the query).
+- After `authStore.submitToken` completes.
 
-## Development
+**`tenantScope.ts`** exposes `requireTenantId()` and `activeTenantId()`. Tenant-scoped stores refuse to fetch without an active tenant and pass `tenant_id` on every list/search call to `/ui/*`.
 
-```bash
-cd ui
-npm ci
-npm run dev          # Vite dev server (proxy API separately or use full stack)
-npm run build        # outputs ui/dist/
-```
+## Tenant boundary
 
-Full stack locally:
+| Concern | Implementation |
+|---------|----------------|
+| URL state | `?tenant=<uuid>` on admin routes |
+| Store selection | `tenantStore.activeTenant` synced from URL; cleared when query absent |
+| Navigation | `routeWithTenant()` on sidebar and in-app links keeps `?tenant=` |
+| API calls | `tenant_id` query param on list/search endpoints |
+| Tenant switch | `setActiveTenant()` → `router.replace({ query })` → guard → `loadRouteData(to)` |
+| Associations | Loaded on row expand, not on list fetch (avoids N+1) |
+
+Admin list endpoints that accept `tenant_id` include `/ui/checkpoints`, `/ui/search_checkpoints`, `/ui/signals`, and filtered association queries. Runtime `/decisions` still derives tenant from the bearer token only.
+
+## Forms
+
+Domain forms keep an explicit draft object. Parent views bind with `v-model`; submit handlers read the emitted draft. Props are not mutated in place. Outbound bearer tokens are collected in create/edit forms but omitted from API read payloads (`has_bearer_token` on the server).
+
+## SPA static file serving
+
+`main.py` mounts `AdminSPAStaticFiles` at `/admin/`:
+
+- Extensionless paths (e.g. `/admin/checkpoints`) → `index.html` when no static file exists.
+- Paths ending in `.js`, `.css`, `.map`, images, fonts, `.json` → `404` if missing (no SPA fallback).
+
+This prevents a missing bundle from returning HTML with a `200` status.
+
+## Build and CI
+
+Local production build:
 
 ```bash
 cd ui && npm ci && npm run build
-cd .. && uvicorn main:app --reload
 ```
 
-Open http://localhost:8000/admin/
+Docker: `Dockerfile` runs the same in a `node:24-slim` stage and copies `dist/` into the Python image.
 
-## Transitional implementation notes
+CI (`.github/workflows/ci.yml`):
 
-Domain state and methods live in `src/mixins/` mounted on the root `App.vue` instance. Child views use `$root` for shared state. A follow-up can migrate to Pinia stores and Composition API per domain without changing the backend.
+1. `npm ci`, `npm audit --audit-level=high`, `typecheck`, `lint`, `test:unit`, `build`
+2. `docker compose up --build`
+3. `pytest`, `smoke_test.sh`
+4. `scripts/` toolchain `npm ci` + `npm audit` (before UI smoke)
+5. `ui_smoke.sh` (browser workflow via `scripts/ui_browser_smoke.mjs`)
+6. Playwright e2e under scrubbed env: install Chromium with `env -i PATH HOME` only; run `./node_modules/.bin/playwright test` with `PATH`, `HOME`, `BASE_URL`, and `SMOKE_ADMIN_TOKEN` (read via `scripts/lib/read_env_var.sh` — do not `source .env.local` into npm)
 
-## Verification
+Operator workflows (screens, deep links, acceptance bar): [`UI_WORKFLOWS.md`](UI_WORKFLOWS.md).
 
-```bash
-cd ui && npm ci && npm run build
-docker compose build risk-engine && docker compose up -d
-bash scripts/ui_smoke.sh      # static + Playwright DOM/workflow checks
-bash scripts/smoke_test.sh
-docker compose exec -T -e RUN_INTEGRATION_TESTS=1 risk-engine pytest -q
-```
+## Prior UI
 
-`ui_smoke.sh` requires Node.js, `SMOKE_ADMIN_TOKEN`, and Playwright Chromium (installed via `scripts/package-lock.json`).
-
-## Migration history
-
-The prior Vue 2 + `httpVueLoader` runtime UI was removed. Component structure and CSS were reused under `ui/src/`.
+The earlier Vue 2 + `httpVueLoader` shell and the transitional `$root` / mixin layout were removed. Domain logic now lives in Pinia stores and routed views under `ui/src/`.

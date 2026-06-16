@@ -3,7 +3,7 @@ import os
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.conftest import SAMPLE_TENANT, TEST_ADMIN_TOKEN, TEST_SAMPLE_TOKEN
+from tests.conftest import OTHER_TENANT, SAMPLE_TENANT, TEST_ADMIN_TOKEN, TEST_SAMPLE_TOKEN
 
 
 @pytest.fixture
@@ -48,6 +48,161 @@ class TestAdminHygiene:
             headers = signal.get("request_headers_template") or ""
             assert "Bearer" not in headers or "[REDACTED]" in headers
             assert "bearer_token" not in signal
+
+    def test_search_checkpoints_filters_by_tenant_id(self, client):
+        sample = client.get(
+            "/ui/search_checkpoints?q=Onboarding&tenant_id="
+            f"{SAMPLE_TENANT}&page=1&size=10",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        )
+        assert sample.status_code == 200
+        sample_items = sample.json()["items"]
+        assert sample_items
+        assert all(item["tenant_id"] == SAMPLE_TENANT for item in sample_items)
+
+        other = client.get(
+            f"/ui/search_checkpoints?q=Onboarding&tenant_id={OTHER_TENANT}&page=1&size=10",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        )
+        assert other.status_code == 200
+        for item in other.json()["items"]:
+            assert item["tenant_id"] == OTHER_TENANT
+
+    def test_spa_fallback_serves_index_for_document_routes(self, client):
+        resp = client.get("/admin/checkpoints")
+        assert resp.status_code == 200
+        assert "Decision Engine Admin" in resp.text
+
+    def test_missing_admin_js_asset_returns_404(self, client):
+        resp = client.get("/admin/assets/missing-bundle-deadbeef.js")
+        assert resp.status_code == 404
+        assert "Decision Engine Admin" not in resp.text
+
+    def test_admin_get_checkpoint_includes_is_current_version(self, client):
+        listed = client.get(
+            f"/ui/checkpoints?tenant_id={SAMPLE_TENANT}&page=1&size=50",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        ).json()["items"]
+        current = next(item for item in listed if item["name"] == "Onboarding" and item["is_current_version"])
+        detail = client.get(
+            f"/ui/checkpoints/{current['id']}",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        ).json()
+        assert detail["is_current_version"] is True
+
+    def test_admin_get_signal_includes_is_current_version(self, client):
+        listed = client.get(
+            f"/ui/signals?tenant_id={SAMPLE_TENANT}&page=1&size=50",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        ).json()["items"]
+        current = next(item for item in listed if item.get("is_current_version"))
+        detail = client.get(
+            f"/ui/signals/{current['id']}",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        ).json()
+        assert detail["is_current_version"] is True
+
+    def test_admin_test_decision_checkpoint_id_runs_selected_version(self, client):
+        stale = client.post(
+            "/ui/checkpoints",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "tenant_id": SAMPLE_TENANT,
+                "name": "Onboarding",
+                "type": "onboarding",
+                "dsl_expression": "False",
+                "makeCurrentVersion": False,
+            },
+        )
+        assert stale.status_code == 200
+        stale_id = stale.json()["id"]
+
+        by_name = client.post(
+            "/ui/test_decisions",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "tenant_id": SAMPLE_TENANT,
+                "checkpoint_name": "Onboarding",
+                "correlation_id": "admin-test-by-name",
+            },
+        )
+        assert by_name.status_code == 200
+        assert by_name.json()["final_decision_value"] == "True"
+
+        by_id = client.post(
+            "/ui/test_decisions",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "tenant_id": SAMPLE_TENANT,
+                "checkpoint_name": "Onboarding",
+                "checkpoint_id": stale_id,
+                "correlation_id": "admin-test-by-id",
+            },
+        )
+        assert by_id.status_code == 200
+        assert by_id.json()["final_decision_value"] == "False"
+
+    def test_search_decisions_includes_checkpoint_name_and_tenant_filter(self, client):
+        resp = client.get(
+            f"/ui/search_decisions?tenant_id={SAMPLE_TENANT}&q=Onboarding&page=1&size=10",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        )
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert items
+        assert all(item["tenant_id"] == SAMPLE_TENANT for item in items)
+        assert any(item.get("checkpoint_name") == "Onboarding" for item in items)
+
+        other = client.get(
+            f"/ui/search_decisions?tenant_id={OTHER_TENANT}&q=Onboarding&page=1&size=10",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        )
+        assert other.status_code == 200
+        for item in other.json()["items"]:
+            assert item["tenant_id"] == OTHER_TENANT
+
+    def test_search_signal_logs_failures_only_and_signal_name(self, client):
+        resp = client.get(
+            f"/ui/search_signal_logs?tenant_id={SAMPLE_TENANT}&failures_only=true&page=1&size=50",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        )
+        assert resp.status_code == 200
+        for item in resp.json()["items"]:
+            assert item["success"] is False
+            if item.get("signal_name"):
+                assert isinstance(item["signal_name"], str)
+
+    def test_admin_mutation_response_envelope(self, client):
+        resp = client.post(
+            "/ui/checkpoints/00000000-0000-0000-0000-000000000000/make_current",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        )
+        assert resp.status_code == 404
+
+        created = client.post(
+            "/ui/checkpoints",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "tenant_id": SAMPLE_TENANT,
+                "name": "mutation-envelope-test",
+                "type": "onboarding",
+                "dsl_expression": "True",
+                "makeCurrentVersion": False,
+            },
+        )
+        assert created.status_code == 200
+        body = created.json()
+        assert body["ok"] is True
+        assert body["action"] == "created"
+        assert body["id"]
+
+        promoted = client.post(
+            f"/ui/checkpoints/{body['id']}/make_current",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        )
+        assert promoted.status_code == 200
+        promoted_body = promoted.json()
+        assert promoted_body == {"ok": True, "action": "promoted", "id": body["id"]}
 
     def test_copy_tenant_clears_bearer_tokens_and_preserves_links(self, client):
         create = client.post(

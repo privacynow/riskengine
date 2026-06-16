@@ -10,17 +10,14 @@ On a VM or bare-metal host with Docker installed:
 bash scripts/create_demo_env.sh
 docker compose up -d --build
 bash scripts/smoke_test.sh
+bash scripts/ui_smoke.sh    # optional; requires Node.js and SMOKE_ADMIN_TOKEN in .env.local
 ```
+
+The `docker compose build` step compiles the admin UI (`ui/dist/`) in a Node build stage and copies it into the Python image. No Node.js is required on the host for a normal deploy.
 
 Expose port `8000` through your reverse proxy or security group. Do **not** publish the admin UI or APIs to the public internet without authentication (see [ROADMAP.md](../ROADMAP.md)).
 
-Generate local demo credentials before first boot:
-
-```sh
-bash scripts/create_demo_env.sh
-```
-
-This writes ignored `.env.local` and `auth.tokens.local.json`. Docker Compose loads them automatically.
+`create_demo_env.sh` writes ignored `.env.local` and `auth.tokens.local.json`. Docker Compose loads them automatically.
 
 ## Environment variables
 
@@ -84,3 +81,9 @@ bash scripts/destroy.sh
 bash scripts/run.sh
 bash scripts/smoke_test.sh
 ```
+
+## Admin UI at runtime
+
+- Served from `ui/dist/` inside the container at `/admin/`.
+- If `ui/dist/` is missing at startup, `main.py` raises `RuntimeError` with build instructions.
+- To rebuild the UI without changing Python code: `cd ui && npm ci && npm run build`, then rebuild the image or copy `dist/` into the running layout before restart.

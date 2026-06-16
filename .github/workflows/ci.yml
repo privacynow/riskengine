@@ -11,6 +11,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Frontend quality gates
+        run: |
+          cd ui
+          npm ci
+          npm audit --audit-level=high --omit=optional
+          npm run typecheck
+          npm run lint
+          npm run test:unit
+          npm run build
+
       - name: Generate demo env
         run: bash scripts/create_demo_env.sh
 
@@ -35,8 +45,26 @@ jobs:
       - name: Smoke test
         run: bash scripts/smoke_test.sh
 
+      - name: Scripts toolchain audit
+        run: |
+          cd scripts
+          npm ci --no-fund --no-audit
+          npm audit --audit-level=high --omit=optional
+
       - name: UI smoke test
         run: bash scripts/ui_smoke.sh
+
+      - name: UI e2e tests
+        run: |
+          cd ui
+          env -i PATH="${PATH}" HOME="${HOME:-}" npx playwright install chromium
+          # shellcheck source=scripts/lib/read_env_var.sh
+          source ../scripts/lib/read_env_var.sh
+          ADMIN_TOKEN="$(read_env_var SMOKE_ADMIN_TOKEN ../.env.local)"
+          env -i PATH="${PATH}" HOME="${HOME:-}" \
+            BASE_URL="http://127.0.0.1:8000" \
+            SMOKE_ADMIN_TOKEN="${ADMIN_TOKEN}" \
+            ./node_modules/.bin/playwright test
 
       - name: Whitespace check
         run: git diff --check

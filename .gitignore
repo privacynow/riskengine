@@ -16,6 +16,9 @@ __pycache__/
 auth.tokens.local.json
 ui/dist/
 ui/node_modules/
+ui/test-results/
+ui/playwright-report/
+ui/playwright/.cache/
 scripts/node_modules/
 *.pem
 postgres_data/

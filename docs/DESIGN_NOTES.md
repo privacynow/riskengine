@@ -28,10 +28,23 @@ Signal URLs are checked for scheme, obvious private IP literals, and known metad
 
 ## Admin UI
 
-The Vue 3 + Vite admin console is a local demo surface. Source lives under `ui/src/`; production bundles are compiled to `ui/dist/` and served as static files. It stores the admin bearer token in `sessionStorage`, calls `/ui/*` routes, and runs test decisions through `POST /ui/test_decisions` so runtime tokens never reach the browser.
+Source: `ui/src/`. Production bundles: `ui/dist/`, served at `/admin/` by `main.py`.
+
+| Topic | Behavior |
+|-------|----------|
+| Login | Admin bearer token from `.env.local`; stored in `sessionStorage` (`decisionEngineAdminToken`) |
+| API | All mutations and reads via `/ui/*` with `Authorization: Bearer` |
+| Test decisions | `POST /ui/test_decisions` — runtime tokens never sent to the browser |
+| Active tenant | Operator selects a tenant; ID appears in the URL as `?tenant=<uuid>` |
+| Scoped fetches | Pinia stores pass `tenant_id` on list/search; no cross-tenant rows in the client |
+| Navigation | `routeWithTenant()` preserves `?tenant=` on sidebar and in-app links |
+| Deep links | `/admin/<route>?tenant=<uuid>` survives auth bootstrap and loads route data |
+| Static assets | SPA fallback for extensionless paths only; missing `.js`/`.css` return `404` |
+
+Stack: Vue 3, TypeScript, Vite, Pinia, Vue Router. See [UI_REDESIGN.md](UI_REDESIGN.md) and [../ui/README.md](../ui/README.md).
 
 Do not expose the admin UI to the public internet without real identity, TLS, and network controls.
 
 ## Immutable writes (deferred)
 
-Admin routes still use in-place updates for some paths. Immutable version-on-write (POST-only config changes) is planned but intentionally deferred until repo hygiene and showcase polish are complete.
+Admin routes still use in-place updates for some paths. Immutable version-on-write (POST-only config changes) is planned but deferred until repo hygiene and showcase polish are complete. The UI does not yet expose version history or compare views.

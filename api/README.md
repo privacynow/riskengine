@@ -39,7 +39,17 @@ bash scripts/create_demo_env.sh
 
 - **runtime** tokens must include `tenant_id`.
 - **admin** tokens may omit `tenant_id` (cross-tenant admin UI access).
-- Runtime clients must not supply `tenant_id` / `tenant_name` on public APIs.
+- Runtime clients must not supply `tenant_id` / `tenant_name` on `/decisions`, `/checkpoints`, or `/signals`.
 - Admin test decisions use `POST /ui/test_decisions` so runtime tokens never reach the browser.
+
+### Admin tenant scoping
+
+Admin list and search endpoints accept optional `tenant_id` to restrict results (used by the admin UI). Examples:
+
+- `GET /ui/checkpoints?tenant_id=<uuid>`
+- `GET /ui/search_checkpoints?q=…&tenant_id=<uuid>`
+- `GET /ui/signals?tenant_id=<uuid>&checkpoint_id=<uuid>`
+
+Omitting `tenant_id` on admin routes can return rows across tenants; the admin UI always passes `tenant_id` for tenant-bound screens.
 
 Hand-maintained YAML under this directory was removed to avoid drift; use `/docs` as the source of truth.

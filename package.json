@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "decision-engine",
+  "private": true,
+  "version": "0.3.0",
+  "description": "Decision Engine — run UI scripts via npm --prefix ui",
+  "scripts": {
+    "dev": "npm --prefix ui run dev",
+    "build": "npm --prefix ui run build",
+    "preview": "npm --prefix ui run preview",
+    "typecheck": "npm --prefix ui run typecheck",
+    "lint": "npm --prefix ui run lint",
+    "format": "npm --prefix ui run format",
+    "test:unit": "npm --prefix ui run test:unit",
+    "test:e2e": "npm --prefix ui run test:e2e"
+  }
+}

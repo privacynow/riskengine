@@ -14,6 +14,7 @@ from services.templates import extract_placeholders_from_text
 from services.tenancy import (
     CheckpointRow,
     ExecutableSignalRow,
+    fetch_checkpoint_row_by_id,
     fetch_current_checkpoint_row,
     fetch_executable_signal_rows,
 )
@@ -47,8 +48,12 @@ async def execute_decision(
     tenant_id: str,
     request: DecisionRequest,
     actor_id: Optional[str] = None,
+    checkpoint_id: Optional[str] = None,
 ) -> DecisionResponse:
-    cp_row: CheckpointRow = fetch_current_checkpoint_row(cur, tenant_id, request.checkpoint_name)
+    if checkpoint_id:
+        cp_row: CheckpointRow = fetch_checkpoint_row_by_id(cur, tenant_id, checkpoint_id)
+    else:
+        cp_row = fetch_current_checkpoint_row(cur, tenant_id, request.checkpoint_name)
     checkpoint_id = cp_row.id
     dsl_expression = cp_row.dsl_expression
     max_cost = cp_row.max_cost

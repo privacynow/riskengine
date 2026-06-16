@@ -1,20 +1,15 @@
 <template>
-  <div
-    v-if="uiNotice.visible"
-    :class="['notice-banner', uiNotice.isError ? 'notice-error' : 'notice-info']"
-  >
-    <span>{{ uiNotice.message }}</span>
-    <button type="button" class="notice-dismiss" @click="uiNotice.visible = false">×</button>
+  <div v-if="noticeVisible" class="notice-banner" :class="{ error: noticeIsError }">
+    <span>{{ noticeMessage }}</span>
+    <button type="button" class="btn-ghost btn-sm" @click="dismissNotice">Dismiss</button>
   </div>
 </template>
 
-<script>
-import { uiNotice } from "@/stores/notices.js";
+<script setup lang="ts">
+import { storeToRefs } from "pinia";
+import { useUiStore } from "@/stores/uiStore";
 
-export default {
-  name: "NoticeBanner",
-  data() {
-    return { uiNotice };
-  },
-};
+const ui = useUiStore();
+const { noticeVisible, noticeMessage, noticeIsError } = storeToRefs(ui);
+const { dismissNotice } = ui;
 </script>

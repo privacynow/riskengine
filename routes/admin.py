@@ -16,6 +16,7 @@ from models import (
     TenantCreateUpdate,
     VariableValueCreateUpdate,
 )
+from services.admin_responses import admin_mutation
 from services.decision import execute_decision
 from services.pagination import build_paginated_response, paginate_query
 from services.security import (
@@ -131,6 +132,7 @@ async def admin_test_decision(
             payload.tenant_id,
             decision_request,
             actor_id=auth.actor_id,
+            checkpoint_id=payload.checkpoint_id,
         )
 
 
@@ -313,7 +315,7 @@ def create_tenant(payload: TenantCreateUpdate):
                 )
         
         conn.commit()
-        return {"id": new_tenant_id}
+        return admin_mutation("created", new_tenant_id)
     
     except Exception as e:
         conn.rollback()
@@ -355,7 +357,7 @@ def create_checkpoint(payload: CheckpointCreateUpdate):
             """, (payload.tenant_id, payload.name, new_checkpoint_id))
         
         conn.commit()
-        return {"id": new_checkpoint_id}
+        return admin_mutation("created", new_checkpoint_id)
     
     except Exception as e:
         conn.rollback()
@@ -451,7 +453,7 @@ def create_signal(payload: SignalCreateUpdate):
                 """, (payload.tenant_id, cp_name, new_cp_id))
         
         conn.commit()
-        return {"id": new_signal_id}
+        return admin_mutation("created", new_signal_id)
     
     except Exception as e:
         conn.rollback()
@@ -518,7 +520,7 @@ def update_tenant(tenant_id: str, payload: TenantCreateUpdate):
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="Tenant not found.")
         conn.commit()
-        return {"id": tenant_id, "name": payload.name}
+        return admin_mutation("updated", tenant_id, name=payload.name)
     finally:
         if conn:
             conn.close()
@@ -534,7 +536,7 @@ def delete_tenant(tenant_id: str):
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="Tenant not found.")
         conn.commit()
-        return {"deleted": True, "id": tenant_id}
+        return admin_mutation("deleted", tenant_id)
     finally:
         if conn:
             conn.close()
@@ -657,10 +659,12 @@ def get_checkpoint(checkpoint_id: str):
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT id, tenant_id, name, description, type, dsl_expression,
-                   method_of_call, max_cost, override_cost_flag, timeout_seconds
-              FROM checkpoints
-             WHERE id = %s
+            SELECT c.id, c.tenant_id, c.name, c.description, c.type, c.dsl_expression,
+                   c.method_of_call, c.max_cost, c.override_cost_flag, c.timeout_seconds,
+                   CASE WHEN cv.checkpoint_id IS NOT NULL THEN true ELSE false END
+              FROM checkpoints c
+              LEFT JOIN checkpoint_current_version cv ON cv.checkpoint_id = c.id
+             WHERE c.id = %s
             """,
             (checkpoint_id,),
         )
@@ -678,6 +682,7 @@ def get_checkpoint(checkpoint_id: str):
             "max_cost": row[7],
             "override_cost_flag": row[8],
             "timeout_seconds": row[9],
+            "is_current_version": row[10],
         }
     finally:
         if conn:
@@ -721,7 +726,7 @@ def update_checkpoint(checkpoint_id: str, payload: CheckpointCreateUpdate):
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="Checkpoint not found.")
         conn.commit()
-        return {"id": checkpoint_id, **payload.model_dump(by_alias=True)}
+        return admin_mutation("updated", checkpoint_id)
     finally:
         if conn:
             conn.close()
@@ -737,7 +742,7 @@ def delete_checkpoint(checkpoint_id: str):
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="Checkpoint not found.")
         conn.commit()
-        return {"deleted": True, "id": checkpoint_id}
+        return admin_mutation("deleted", checkpoint_id)
     finally:
         if conn:
             conn.close()
@@ -847,15 +852,17 @@ def get_signal(signal_id: str):
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT id, tenant_id, name, description, type, method_of_call,
-                   expression_body, cost, cache_expiration_seconds,
-                   timeout_seconds, can_run_in_parallel, order_of_evaluation,
-                   http_method, request_url_params_template,
-                   request_body_template, request_headers_template,
-                   bearer_token, allow_caching, global_reuse,
-                   function_params_template
-              FROM signals
-             WHERE id = %s
+            SELECT s.id, s.tenant_id, s.name, s.description, s.type, s.method_of_call,
+                   s.expression_body, s.cost, s.cache_expiration_seconds,
+                   s.timeout_seconds, s.can_run_in_parallel, s.order_of_evaluation,
+                   s.http_method, s.request_url_params_template,
+                   s.request_body_template, s.request_headers_template,
+                   s.bearer_token, s.allow_caching, s.global_reuse,
+                   s.function_params_template,
+                   CASE WHEN scv.signal_id IS NOT NULL THEN true ELSE false END AS is_current_version
+              FROM signals s
+              LEFT JOIN signal_current_version scv ON scv.signal_id = s.id
+             WHERE s.id = %s
             """,
             (signal_id,),
         )
@@ -863,7 +870,7 @@ def get_signal(signal_id: str):
         if not row:
             raise HTTPException(status_code=404, detail="Signal not found.")
 
-        return _admin_signal_item_from_row(row, include_current=False)
+        return _admin_signal_item_from_row(row, include_current=True)
     finally:
         if conn:
             conn.close()
@@ -932,7 +939,7 @@ def update_signal(signal_id: str, payload: SignalCreateUpdate):
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="Signal not found.")
         conn.commit()
-        return {"id": signal_id, **admin_signal_secret_fields(bearer_token)}
+        return admin_mutation("updated", signal_id, **admin_signal_secret_fields(bearer_token))
     finally:
         if conn:
             conn.close()
@@ -948,7 +955,7 @@ def delete_signal(signal_id: str):
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="Signal not found.")
         conn.commit()
-        return {"deleted": True, "id": signal_id}
+        return admin_mutation("deleted", signal_id)
     finally:
         if conn:
             conn.close()
@@ -975,7 +982,7 @@ def create_variable_value(payload: VariableValueCreateUpdate):
         )
         row_id = str(cur.fetchone()[0])
         conn.commit()
-        return {"id": row_id, **payload.model_dump()}
+        return admin_mutation("created", row_id)
     finally:
         if conn:
             conn.close()
@@ -1034,7 +1041,7 @@ def update_variable_value(variable_value_id: str, payload: VariableValueCreateUp
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="Variable value not found.")
         conn.commit()
-        return {"id": variable_value_id, **payload.model_dump()}
+        return admin_mutation("updated", variable_value_id)
     finally:
         if conn:
             conn.close()
@@ -1050,7 +1057,7 @@ def delete_variable_value(variable_value_id: str):
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="Variable value not found.")
         conn.commit()
-        return {"deleted": True, "id": variable_value_id}
+        return admin_mutation("deleted", variable_value_id)
     finally:
         if conn:
             conn.close()
@@ -1072,7 +1079,12 @@ def create_checkpoint_signal(payload: CheckpointSignalCreateUpdate):
             (new_id, payload.checkpoint_id, payload.signal_id),
         )
         conn.commit()
-        return {"id": new_id, **payload.model_dump(by_alias=True)}
+        return admin_mutation(
+            "created",
+            new_id,
+            checkpoint_id=payload.checkpoint_id,
+            signal_id=payload.signal_id,
+        )
     finally:
         if conn:
             conn.close()
@@ -1088,14 +1100,20 @@ def delete_checkpoint_signal(checkpoint_signal_id: str):
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="Checkpoint-signal link not found.")
         conn.commit()
-        return {"deleted": True, "id": checkpoint_signal_id}
+        return admin_mutation("deleted", checkpoint_signal_id)
     finally:
         if conn:
             conn.close()
 
 
 @router.get("/ui/checkpoint_signals")
-def list_checkpoint_signals(page: int = 1, size: int = 10):
+def list_checkpoint_signals(
+    page: int = 1,
+    size: int = 10,
+    tenant_id: Optional[str] = None,
+    checkpoint_id: Optional[str] = None,
+    signal_id: Optional[str] = None,
+):
     conn = None
     try:
         conn = get_db_connection()
@@ -1107,7 +1125,20 @@ def list_checkpoint_signals(page: int = 1, size: int = 10):
               JOIN checkpoints c ON cs.checkpoint_id = c.id
               JOIN signals s ON cs.signal_id = s.id
         """
-        total, rows = paginate_query(cur, base_query, (), page, size)
+        where_parts = []
+        params: list = []
+        if tenant_id:
+            where_parts.append("c.tenant_id = %s")
+            params.append(tenant_id)
+        if checkpoint_id:
+            where_parts.append("cs.checkpoint_id = %s")
+            params.append(checkpoint_id)
+        if signal_id:
+            where_parts.append("cs.signal_id = %s")
+            params.append(signal_id)
+        if where_parts:
+            base_query += " WHERE " + " AND ".join(where_parts)
+        total, rows = paginate_query(cur, base_query, tuple(params), page, size)
         items = []
         for r in rows:
             items.append(
@@ -1148,7 +1179,13 @@ def search_tenants(q: str, page: int = 1, size: int = 10):
 
 
 @router.get("/ui/search_checkpoints")
-def search_checkpoints(q: str, page: int = 1, size: int = 10, active_only: bool = False):
+def search_checkpoints(
+    q: str,
+    tenant_id: Optional[str] = None,
+    page: int = 1,
+    size: int = 10,
+    active_only: bool = False,
+):
     """
     Searches checkpoints by partial match in name, id::text, type, description,
     dsl_expression, or method_of_call.
@@ -1171,7 +1208,11 @@ def search_checkpoints(q: str, page: int = 1, size: int = 10, active_only: bool 
                 OR c.method_of_call ILIKE %s)
         """
         params = [like, like, like, like, like, like]
-        
+
+        if tenant_id:
+            base_query += " AND c.tenant_id = %s"
+            params.append(tenant_id)
+
         if active_only:
             base_query += " AND cv.checkpoint_id IS NOT NULL"
 
@@ -1242,12 +1283,13 @@ def search_decisions(
     q: Optional[str] = None,
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
+    tenant_id: Optional[str] = None,
     page: int = 1,
     size: int = 10
 ):
     """
     Searches decisions by partial match in final_decision_value, correlation_id,
-    applicant_id, checkpoint_id::text, or in signal_log.signal_value.
+    applicant_id, checkpoint name, checkpoint_id::text, or in signal_log.signal_value.
     Also optional date filters.
     """
     conn = None
@@ -1258,8 +1300,9 @@ def search_decisions(
         base_query = """
             SELECT dl.id, dl.checkpoint_id, dl.tenant_id, dl.applicant_id,
                    dl.final_decision_value, dl.cost_incurred, dl.correlation_id,
-                   dl.decision_timestamp
+                   dl.decision_timestamp, c.name AS checkpoint_name
               FROM decision_log dl
+         LEFT JOIN checkpoints c ON c.id = dl.checkpoint_id
          LEFT JOIN signal_log sl ON dl.id = sl.decision_log_id
              WHERE 1=1
         """
@@ -1275,11 +1318,12 @@ def search_decisions(
                   OR dl.correlation_id ILIKE %s
                   OR dl.applicant_id ILIKE %s
                   OR dl.checkpoint_id::text ILIKE %s
+                  OR c.name ILIKE %s
                   OR sl.signal_value ILIKE %s
                 )
                 """
             )
-            params.extend([like, like, like, like, like])
+            params.extend([like, like, like, like, like, like])
 
         if from_date:
             conditions.append("dl.decision_timestamp >= %s")
@@ -1288,10 +1332,14 @@ def search_decisions(
             conditions.append("dl.decision_timestamp <= %s")
             params.append(to_date)
 
+        if tenant_id:
+            conditions.append("dl.tenant_id = %s")
+            params.append(tenant_id)
+
         if conditions:
             base_query += " AND " + " AND ".join(conditions)
 
-        base_query += " GROUP BY dl.id"
+        base_query += " GROUP BY dl.id, c.name"
 
         total, rows = paginate_query(cur, base_query, params, page, size)
         items = []
@@ -1306,6 +1354,7 @@ def search_decisions(
                     "cost_incurred": r[5],
                     "correlation_id": r[6],
                     "decision_timestamp": r[7].isoformat() if r[7] else None,
+                    "checkpoint_name": r[8],
                 }
             )
         return build_paginated_response(items, total, page, size)
@@ -1315,9 +1364,13 @@ def search_decisions(
 
 
 @router.get("/ui/search_signal_logs")
-def search_signal_logs(q: Optional[str] = None,
-                       page: int = 1,
-                       size: int = 10):
+def search_signal_logs(
+    q: Optional[str] = None,
+    tenant_id: Optional[str] = None,
+    failures_only: bool = False,
+    page: int = 1,
+    size: int = 10,
+):
     """
     Searches signal_log by partial match in signal_id, applicant_id,
     decision_log_id, signal_value, cost_incurred, success, or id.
@@ -1330,8 +1383,10 @@ def search_signal_logs(q: Optional[str] = None,
 
         # Step 1: count how many overall signal_log rows match
         base_count_query = """
-            SELECT COUNT(*)
-              FROM signal_log
+            SELECT COUNT(DISTINCT sl.id)
+              FROM signal_log sl
+         LEFT JOIN signals sig ON sig.id = sl.signal_id
+         LEFT JOIN decision_log dl ON dl.id = sl.decision_log_id
              WHERE 1=1
         """
         count_conditions = []
@@ -1342,17 +1397,25 @@ def search_signal_logs(q: Optional[str] = None,
             count_conditions.append(
                 """
                 (
-                  signal_id::text ILIKE %s
-                  OR applicant_id ILIKE %s
-                  OR decision_log_id::text ILIKE %s
-                  OR signal_value ILIKE %s
-                  OR CAST(cost_incurred AS text) ILIKE %s
-                  OR CAST(success AS text) ILIKE %s
-                  OR id::text ILIKE %s
+                  sl.signal_id::text ILIKE %s
+                  OR sl.applicant_id ILIKE %s
+                  OR sl.decision_log_id::text ILIKE %s
+                  OR sl.signal_value ILIKE %s
+                  OR CAST(sl.cost_incurred AS text) ILIKE %s
+                  OR CAST(sl.success AS text) ILIKE %s
+                  OR sl.id::text ILIKE %s
+                  OR sig.name ILIKE %s
                 )
                 """
             )
-            count_params.extend([like, like, like, like, like, like, like])
+            count_params.extend([like, like, like, like, like, like, like, like])
+
+        if tenant_id:
+            count_conditions.append("dl.tenant_id = %s")
+            count_params.append(tenant_id)
+
+        if failures_only:
+            count_conditions.append("sl.success = false")
 
         if count_conditions:
             base_count_query += " AND " + " AND ".join(count_conditions)
@@ -1372,8 +1435,11 @@ def search_signal_logs(q: Optional[str] = None,
                    sl.cost_incurred,
                    sl.success,
                    slv.param_name,
-                   slv.param_value
+                   slv.param_value,
+                   sig.name AS signal_name
               FROM signal_log sl
+         LEFT JOIN signals sig ON sig.id = sl.signal_id
+         LEFT JOIN decision_log dl ON dl.id = sl.decision_log_id
          LEFT JOIN signal_log_values slv
                 ON sl.id = slv.signal_log_id
              WHERE 1=1
@@ -1395,10 +1461,18 @@ def search_signal_logs(q: Optional[str] = None,
                   OR sl.id::text ILIKE %s
                   OR slv.param_name ILIKE %s
                   OR slv.param_value ILIKE %s
+                  OR sig.name ILIKE %s
                 )
                 """
             )
-            data_params.extend([like, like, like, like, like, like, like, like, like])
+            data_params.extend([like, like, like, like, like, like, like, like, like, like])
+
+        if tenant_id:
+            data_conditions.append("dl.tenant_id = %s")
+            data_params.append(tenant_id)
+
+        if failures_only:
+            data_conditions.append("sl.success = false")
 
         if data_conditions:
             base_data_query += " AND " + " AND ".join(data_conditions)
@@ -1413,6 +1487,7 @@ def search_signal_logs(q: Optional[str] = None,
             "id": None,
             "decision_log_id": None,
             "signal_id": None,
+            "signal_name": None,
             "applicant_id": None,
             "signal_value": None,
             "started_at": None,
@@ -1434,6 +1509,7 @@ def search_signal_logs(q: Optional[str] = None,
                 log_map[sl_id]["completed_at"] = row[6].isoformat() if row[6] else None
                 log_map[sl_id]["cost_incurred"] = row[7]
                 log_map[sl_id]["success"] = row[8]
+                log_map[sl_id]["signal_name"] = row[11]
 
             param_name = row[9]
             param_val = row[10]
@@ -1502,7 +1578,7 @@ def make_checkpoint_current(checkpoint_id: str):
         """, (tenant_id, checkpoint_name, checkpoint_id))
         
         conn.commit()
-        return {"status": "success"}
+        return admin_mutation("promoted", checkpoint_id)
     except Exception as e:
         conn.rollback()
         raise_admin_error(e, context="make_checkpoint_current failed")
@@ -1552,7 +1628,11 @@ def toggle_signal_active(signal_id: str):
             """, (tenant_id, signal_name, signal_id))
 
         conn.commit()
-        return {"success": True, "is_active": not is_active}
+        return admin_mutation(
+            "activated" if not is_active else "deactivated",
+            signal_id,
+            is_active=not is_active,
+        )
     except Exception as e:
         conn.rollback()
         raise_admin_error(e, context="toggle_signal_active failed")
@@ -1587,7 +1667,7 @@ def make_signal_current(signal_id: str):
         """, (tenant_id, signal_name, signal_id))
         
         conn.commit()
-        return {"message": "Signal set as current version"}
+        return admin_mutation("promoted", signal_id)
     except Exception as e:
         conn.rollback()
         raise_admin_error(e, context="make_signal_current failed")

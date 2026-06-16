@@ -12,6 +12,7 @@ class TenantSuppliedError(Exception):
 class AdminTestDecisionRequest(BaseModel):
     tenant_id: str
     checkpoint_name: str
+    checkpoint_id: Optional[str] = None
     applicant_id: Optional[str] = None
     correlation_id: Optional[str] = None
     parameters: Optional[Dict[str, Any]] = None

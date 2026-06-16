@@ -5,16 +5,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 cd "${ROOT_DIR}"
 
-ENV_FILE="${ROOT_DIR}/.env.local"
-if [[ -f "${ENV_FILE}" ]]; then
-  set -a
-  # shellcheck disable=SC1090
-  source "${ENV_FILE}"
-  set +a
-fi
+# shellcheck source=lib/read_env_var.sh
+source "${SCRIPT_DIR}/lib/read_env_var.sh"
 
+ENV_FILE="${ROOT_DIR}/.env.local"
 BASE_URL="${BASE_URL:-http://localhost:8000}"
 ADMIN_TOKEN="${SMOKE_ADMIN_TOKEN:-}"
+
+if [[ -z "${ADMIN_TOKEN}" && -f "${ENV_FILE}" ]]; then
+  ADMIN_TOKEN="$(read_env_var SMOKE_ADMIN_TOKEN "${ENV_FILE}" || true)"
+fi
 
 echo "UI smoke test against ${BASE_URL}"
 
@@ -51,12 +51,18 @@ if ! command -v node >/dev/null 2>&1; then
 fi
 
 echo "-> Browser UI smoke (Playwright)"
-export BASE_URL SMOKE_ADMIN_TOKEN="${ADMIN_TOKEN}"
+# Install tooling without inheriting app/admin secrets in the environment.
 if [[ ! -d "${SCRIPT_DIR}/node_modules/playwright" ]]; then
   echo "   Installing Playwright dependencies (first run)…"
-  (cd "${SCRIPT_DIR}" && npm ci --no-fund --no-audit)
+  (cd "${SCRIPT_DIR}" && env -i PATH="${PATH}" HOME="${HOME:-}" npm ci --no-fund --no-audit)
 fi
-(cd "${SCRIPT_DIR}" && npx playwright install chromium)
-(cd "${SCRIPT_DIR}" && node ui_browser_smoke.mjs)
+(cd "${SCRIPT_DIR}" && env -i PATH="${PATH}" HOME="${HOME:-}" npx playwright install chromium)
+(
+  cd "${SCRIPT_DIR}"
+  env -i PATH="${PATH}" HOME="${HOME:-}" \
+    BASE_URL="${BASE_URL}" \
+    SMOKE_ADMIN_TOKEN="${ADMIN_TOKEN}" \
+    node ui_browser_smoke.mjs
+)
 
 echo "UI smoke test passed."

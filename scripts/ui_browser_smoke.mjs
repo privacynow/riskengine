@@ -85,22 +85,23 @@ async function main() {
     await page.waitForSelector(".top-bar", { timeout: 10000 });
     await page.waitForSelector(".tenant-context-bar", { timeout: 10000 });
     await page.waitForSelector("main.page-content", { timeout: 10000 });
-    await page.waitForSelector(".overview-view .stat-grid", { timeout: 10000 });
+    await page.waitForSelector(".overview-view", { timeout: 10000 });
 
     if ((await page.locator("main.page-content .overview-view").count()) < 1) {
       fail("overview view not rendered inside main.page-content");
     }
+
+    console.log("-> Select tenant");
+    await selectFirstTenant(page);
+    await page.waitForSelector(".overview-view .stat-grid", { timeout: 10000 });
     if ((await page.locator(".stat-card").count()) < 3) {
       fail("overview stat cards missing");
     }
 
-    console.log("-> Select tenant");
-    await selectFirstTenant(page);
-
-    console.log("-> Navigate to Signals and open create form");
-    await page.getByRole("button", { name: "Signals" }).click();
+    console.log("-> Navigate to Signal Library and open create form");
+    await page.getByRole("link", { name: "Signal Library" }).click();
     await page.waitForSelector(".signals-view", { timeout: 10000 });
-    await page.getByRole("button", { name: "Create signal" }).click();
+    await page.getByRole("button", { name: "New signal" }).click();
     await page.waitForSelector(".signal-form", { timeout: 10000 });
 
     const signalLabels = await page.locator(".signal-form label").allTextContents();
@@ -110,10 +111,10 @@ async function main() {
       }
     }
 
-    console.log("-> Navigate to Checkpoints and open create form");
-    await page.getByRole("button", { name: "Checkpoints" }).click();
+    console.log("-> Navigate to Decision Flows and open create form");
+    await page.getByRole("link", { name: "Decision Flows" }).click();
     await page.waitForSelector(".checkpoints-view", { timeout: 10000 });
-    await page.getByRole("button", { name: "Create checkpoint" }).click();
+    await page.getByRole("button", { name: "New flow" }).click();
     await page.waitForSelector(".checkpoint-form", { timeout: 10000 });
 
     const checkpointLabels = await page.locator(".checkpoint-form label").allTextContents();

@@ -4,8 +4,9 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.openapi.utils import get_openapi
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from audit import log_processor, log_queue
 from auth import initialize_auth
@@ -69,7 +70,45 @@ app.openapi = custom_openapi
 
 @app.get("/")
 def root_redirect():
-    return RedirectResponse(url="/admin/index.html")
+    return RedirectResponse(url="/admin/overview")
+
+
+class AdminSPAStaticFiles(StaticFiles):
+    """Serve built assets; SPA fallback only for extensionless document routes."""
+
+    _ASSET_SUFFIXES = (
+        ".js",
+        ".css",
+        ".map",
+        ".svg",
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".gif",
+        ".webp",
+        ".ico",
+        ".woff",
+        ".woff2",
+        ".ttf",
+        ".json",
+    )
+
+    @staticmethod
+    def _should_spa_fallback(path: str) -> bool:
+        if not path or path == "/":
+            return True
+        lower = path.lower()
+        if any(lower.endswith(ext) for ext in AdminSPAStaticFiles._ASSET_SUFFIXES):
+            return False
+        return True
+
+    async def get_response(self, path: str, scope):
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code == 404 and self._should_spa_fallback(path):
+                return FileResponse(str(UI_DIST / "index.html"))
+            raise
 
 
 @app.api_route(
@@ -95,4 +134,8 @@ if not UI_DIST.is_dir():
     raise RuntimeError(
         f"Admin UI build missing at {UI_DIST}. Run: cd ui && npm ci && npm run build"
     )
-app.mount("/admin", StaticFiles(directory=str(UI_DIST), html=True), name="admin")
+app.mount(
+    "/admin",
+    AdminSPAStaticFiles(directory=str(UI_DIST), html=True),
+    name="admin",
+)
