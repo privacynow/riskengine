@@ -54,8 +54,6 @@ Working prototype — not production-ready.
 
 ## Immutable config writes (next backend milestone)
 
-Deferred until showcase repo hygiene is complete:
-
 - POST creates new checkpoint/signal versions; PUT restricted or metadata-only
 - Upstream checkpoint copies reference prior signal row IDs
 - Copy `signal_variable_values` on signal version create

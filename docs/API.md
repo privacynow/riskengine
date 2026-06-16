@@ -52,4 +52,4 @@ Admin list and search endpoints accept optional `tenant_id` to restrict results 
 
 Omitting `tenant_id` on admin routes can return rows across tenants; the admin UI always passes `tenant_id` for tenant-bound screens.
 
-Hand-maintained YAML under this directory was removed to avoid drift; use `/docs` as the source of truth.
+Hand-maintained OpenAPI YAML was removed to avoid drift; use `/docs` on a running instance as the source of truth.

@@ -1,3 +1,25 @@
+# Decision Engine
+
+Multi-tenant checkpoint evaluation: signals + DSL, audit logging, and a Vue admin workbench.
+
+## Repository layout
+
+| Path | What it is |
+|------|------------|
+| [`ui/`](ui/) | Admin SPA (Vue 3 + TypeScript); built to `ui/dist/`, served at `/admin/` |
+| [`routes/`](routes/) | FastAPI routers — runtime (`/decisions`) and admin (`/ui/*`) |
+| [`services/`](services/) | Decision engine, tenancy resolution, security, pagination |
+| [`sql/`](sql/) | Postgres schema and idempotent demo seed ([`sql/README.md`](sql/README.md)) |
+| [`scripts/`](scripts/) | Demo env, smoke tests, Docker helpers |
+| [`tests/`](tests/) | Pytest (auth, tenancy, admin hygiene) |
+| [`docs/`](docs/) | Roadmap, workflows, API auth notes, deployment |
+| `main.py`, `auth.py`, … | App entry and core Python modules (flat layout for this prototype) |
+| `Dockerfile`, `docker-compose.yml` | Container build and local stack |
+
+**Docs:** [Roadmap](docs/ROADMAP.md) · [UI workflows](docs/UI_WORKFLOWS.md) · [API auth](docs/API.md) · [Design notes](docs/DESIGN_NOTES.md)
+
+---
+
 ## System Overview
 
 **Decision Engine** is a multi-tenant prototype for configurable checkpoint evaluation. Checkpoints combine signals (HTTP calls, local functions, variables, expressions) and a DSL expression to produce a pass/fail outcome with audit logging.
@@ -13,7 +35,7 @@
 
 **Not yet implemented:** Per-signal HTTP timeouts beyond a fixed 5s client default, `can_run_in_parallel` enforcement, immutable config writes.
 
-> **Status:** Working prototype. See [ROADMAP.md](ROADMAP.md) and [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md).
+> **Status:** Working prototype. See [docs/ROADMAP.md](docs/ROADMAP.md) and [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md).
 
 ---
 
@@ -82,7 +104,7 @@ Or use the clean-room helper: `bash scripts/bootstrap_smoke.sh` (destroys the DB
 
 Runtime clients **must not** send `tenant_id` or `tenant_name`; attempting to do so returns `403`.
 
-See [api/README.md](api/README.md) for token JSON shape.
+See [docs/API.md](docs/API.md) for token JSON shape.
 
 ---
 
@@ -201,7 +223,7 @@ For UI-only work: `cd ui && npm run dev` (Vite on its own port; API must still r
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md).
+See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ---
 
