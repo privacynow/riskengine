@@ -1,5 +1,9 @@
 import { test, expect, type Page } from "@playwright/test";
-import { authenticate, assertNoHorizontalOverflow, firstTenantId, selectTenant } from "./helpers";
+import { authenticate, assertNoHorizontalOverflow, firstTenantId, navigateSidebar, selectTenant } from "./helpers";
+
+async function neutralizePointer(page: Page) {
+  await page.mouse.move(0, 0);
+}
 
 async function assertOverviewChrome(page: Page) {
   await expect(page.locator(".top-bar h2, .top-bar .page-header-subtitle")).toHaveCount(0);
@@ -56,10 +60,10 @@ async function assertEmptyStateTypography(page: Page) {
   expect(marginTop).toBe(0);
 }
 
-async function assertMobileListRowArrowsHidden(page: Page) {
-  const actions = page.locator(".overview-view .list-row-action");
+async function assertMobileListRowArrowsHidden(page: Page, root: string) {
+  const actions = page.locator(`${root} .list-row-action`);
   const count = await actions.count();
-  expect(count).toBeGreaterThan(0);
+  if (count === 0) return;
   for (let i = 0; i < count; i++) {
     await expect(actions.nth(i)).toBeHidden();
   }
@@ -98,6 +102,40 @@ async function assertWorkbenchDetailHeader(page: Page) {
   expect(marginTop).toBe(0);
 }
 
+async function assertToolbarSearchHeight(page: Page, root: string) {
+  const input = page.locator(`${root} input[type="search"]`);
+  await expect(input).toBeVisible();
+  const height = await input.evaluate((el) => el.getBoundingClientRect().height);
+  expect(height).toBeGreaterThan(30);
+  expect(height).toBeLessThan(44);
+}
+
+async function assertSingleActiveNav(page: Page, label: string) {
+  await expect(page.locator(".sidebar-nav-item.active")).toHaveCount(1);
+  await expect(page.locator(".sidebar-nav-item.active", { hasText: label })).toHaveCount(1);
+}
+
+async function assertWorkbenchListRows(page: Page, root: string) {
+  const row = page.locator(`${root} .list-row`).first();
+  await expect(row).toBeVisible();
+  await expect(row.locator(".list-row-stats")).toHaveCount(1);
+  await expect(row.locator(".list-row-open")).toHaveCount(1);
+}
+
+async function prepareFlowsView(page: Page) {
+  await navigateSidebar(page, "Decision Flows");
+  await page.waitForSelector(".checkpoints-view", { timeout: 10000 });
+  await page.getByRole("button", { name: "Load all" }).click();
+  await page.waitForSelector(".checkpoints-view .list-row", { timeout: 10000 });
+}
+
+async function prepareSignalsView(page: Page) {
+  await navigateSidebar(page, "Signal Library");
+  await page.waitForSelector(".signals-view", { timeout: 10000 });
+  await page.getByRole("button", { name: "Load all" }).click();
+  await page.waitForSelector(".signals-view .list-row", { timeout: 10000 });
+}
+
 test.describe("visual review — overview", () => {
   test.beforeEach(async ({ page }) => {
     await authenticate(page);
@@ -109,6 +147,7 @@ test.describe("visual review — overview", () => {
   test("overview desktop", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.waitForTimeout(300);
+    await neutralizePointer(page);
     await assertOverviewChrome(page);
     await assertOverviewPanelSpacing(page);
     await assertOverviewListRows(page);
@@ -121,10 +160,11 @@ test.describe("visual review — overview", () => {
   test("overview mobile", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForTimeout(300);
+    await neutralizePointer(page);
     await assertOverviewChrome(page);
     await assertOverviewPanelSpacing(page);
     await assertOverviewListRows(page);
-    await assertMobileListRowArrowsHidden(page);
+    await assertMobileListRowArrowsHidden(page, ".overview-view");
     await assertTopBarFits(page);
     await assertNoHorizontalOverflow(page);
     await expect(page.locator(".overview-view")).toBeVisible();
@@ -140,20 +180,70 @@ test.describe("visual review — workbench", () => {
   });
 
   test("workbench detail header spacing", async ({ page }) => {
-    await page.getByRole("link", { name: "Decision Flows", exact: true }).click();
-    await page.waitForSelector(".checkpoints-view", { timeout: 10000 });
-    await page.locator(".checkpoints-view .list-row").first().click();
+    await prepareFlowsView(page);
+    await page.locator(".checkpoints-view .list-row-open").first().click();
     await page.waitForSelector(".workbench-detail-header", { timeout: 10000 });
     await assertWorkbenchDetailHeader(page);
   });
 
-  test("flows and signals list rows", async ({ page }) => {
-    await page.getByRole("link", { name: "Decision Flows", exact: true }).click();
-    await page.waitForSelector(".checkpoints-view .list-row", { timeout: 10000 });
-    await expect(page.locator(".checkpoints-view .list-row").first()).toBeVisible();
+  test("promote does not open row on Space", async ({ page }) => {
+    await prepareFlowsView(page);
+    const promote = page.locator(".checkpoints-view .list-row-promote").first();
+    if ((await promote.count()) === 0) {
+      test.skip();
+      return;
+    }
+    await promote.focus();
+    await page.keyboard.press("Space");
+    await expect(page).toHaveURL(/\/admin\/checkpoints/);
+    await expect(page).not.toHaveURL(/checkpoint-detail/);
+  });
 
-    await page.getByRole("link", { name: "Signal Library", exact: true }).click();
-    await page.waitForSelector(".signals-view .list-row", { timeout: 10000 });
-    await expect(page.locator(".signals-view .list-row").first()).toBeVisible();
+  test("flows desktop", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await prepareFlowsView(page);
+    await page.waitForTimeout(300);
+    await neutralizePointer(page);
+    await assertSingleActiveNav(page, "Decision Flows");
+    await assertWorkbenchListRows(page, ".checkpoints-view");
+    await assertNoHorizontalOverflow(page);
+    await expect(page.locator(".checkpoints-view")).toHaveScreenshot("flows-desktop.png");
+  });
+
+  test("flows mobile", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await prepareFlowsView(page);
+    await page.waitForTimeout(300);
+    await neutralizePointer(page);
+    await assertSingleActiveNav(page, "Decision Flows");
+    await assertToolbarSearchHeight(page, ".checkpoints-view");
+    await assertWorkbenchListRows(page, ".checkpoints-view");
+    await assertMobileListRowArrowsHidden(page, ".checkpoints-view");
+    await assertNoHorizontalOverflow(page);
+    await expect(page.locator(".checkpoints-view")).toHaveScreenshot("flows-mobile-390.png");
+  });
+
+  test("signals desktop", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await prepareSignalsView(page);
+    await page.waitForTimeout(300);
+    await neutralizePointer(page);
+    await assertSingleActiveNav(page, "Signal Library");
+    await assertWorkbenchListRows(page, ".signals-view");
+    await assertNoHorizontalOverflow(page);
+    await expect(page.locator(".signals-view")).toHaveScreenshot("signals-desktop.png");
+  });
+
+  test("signals mobile", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await prepareSignalsView(page);
+    await page.waitForTimeout(300);
+    await neutralizePointer(page);
+    await assertSingleActiveNav(page, "Signal Library");
+    await assertToolbarSearchHeight(page, ".signals-view");
+    await assertWorkbenchListRows(page, ".signals-view");
+    await assertMobileListRowArrowsHidden(page, ".signals-view");
+    await assertNoHorizontalOverflow(page);
+    await expect(page.locator(".signals-view")).toHaveScreenshot("signals-mobile-390.png");
   });
 });

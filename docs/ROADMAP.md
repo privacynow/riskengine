@@ -26,6 +26,7 @@ Working prototype — not production-ready.
 - Fixed ~5s HTTP client timeout; `can_run_in_parallel` not enforced
 - Admin routes use legacy in-place updates for some config changes
 - Admin UI has no version history/compare UX (backend still mutates rows in place)
+- Rule authoring is possible through checkpoints, signals, DSL text, and promotion, but there is no first-class rule lifecycle yet
 
 ## Near-term hardening (showcase)
 
@@ -51,6 +52,57 @@ Working prototype — not production-ready.
 - `can_run_in_parallel` scheduling
 - Immutable config writes (version-on-write for checkpoints/signals)
 - Structured audit with `actor_id` on all mutations
+- Governed rule authoring: drafts, validation, approval, promotion, rollback, and version comparison
+
+## Rule authoring system target state
+
+The commercial product should treat rule authoring as a governed lifecycle, not as raw CRUD over checkpoints and signals. The current model already has the right primitives — tenant-scoped decision flows, signal library, DSL evaluation, test lab, audit log, and current-version pointers — but the target system needs a first-class authoring experience around them.
+
+### Authoring model
+
+- Decision flows are the top-level rule packages exposed to operators.
+- Signals remain reusable building blocks: variables, expressions, functions, and endpoint integrations.
+- A flow draft owns a DSL expression, linked signals, expected inputs, runtime policy, and test cases.
+- A promoted flow version is immutable and is the only version used by runtime `POST /decisions` unless a test explicitly targets a draft/version ID.
+- Each tenant owns its own drafts, promoted versions, connector secrets, and audit history.
+
+### Lifecycle
+
+1. Create or clone a decision flow draft.
+2. Add or update linked signals.
+3. Define expected input parameters and types.
+4. Author the DSL expression with validation feedback.
+5. Run saved scenario tests in Test Lab.
+6. Review a diff against the current promoted version.
+7. Promote the draft with an actor, reason, and audit entry.
+8. Monitor live decisions and signal failures.
+9. Roll back to a prior promoted version if needed.
+
+### Validation and safety
+
+- Parse DSL before save; reject syntax errors with line/column feedback.
+- Detect unknown signal names, unlinked signal references, duplicate names, and invalid identifiers.
+- Type-check common comparisons when signal/input types are known.
+- Validate endpoint templates for missing placeholders and blocked credential fields.
+- Prevent promotion when required test cases fail.
+- Keep runtime failures fail-closed and visible in audit.
+
+### Versioning and audit
+
+- All config-changing saves create immutable versions.
+- PUT is restricted to metadata-only fields or removed from config mutation paths.
+- Version history APIs list flow/signal versions with actor, timestamp, reason, status, and diff summary.
+- UI exposes compare, promote, rollback, and deactivate actions from a Versions tab.
+- Audit records include actor IDs for every admin mutation and promotion.
+
+### Operator experience
+
+- DSL editor shows linked signals, expected inputs, and available variables.
+- Autocomplete suggests signal names and supported operators.
+- Validation runs inline and in a server-side preflight endpoint.
+- Test Lab can run against draft versions before promotion.
+- Audit can re-run past scenarios against current, draft, or historical versions.
+- Overview surfaces rule health: failing flows, costly flows, untested drafts, stale signals, and recent promotions.
 
 ## Immutable config writes (next backend milestone)
 

@@ -438,18 +438,26 @@ label {
 
   .toolbar .form-control,
   .toolbar input[type="text"],
+  .toolbar input[type="search"],
   .toolbar select,
   .form-inline input[type="text"],
+  .form-inline input[type="search"],
   .form-inline select,
-  .search-container input[type="text"] {
-    flex: 1 1 auto;
+  .search-container input[type="text"],
+  .search-container input[type="search"] {
+    flex: 0 0 auto;
     width: 100%;
+    height: 36px;
+    min-height: 36px;
+    max-height: 36px;
   }
 
   .toolbar .btn,
   .form-inline .btn,
   .search-container .btn {
+    flex: 0 0 auto;
     width: 100%;
+    height: 36px;
   }
 
   .toolbar-spacer {

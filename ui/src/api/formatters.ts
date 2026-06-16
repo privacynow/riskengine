@@ -56,3 +56,20 @@ export function isCurrentVersion(
 ): boolean {
   return !!row?.is_current_version;
 }
+
+/** Flow max_cost cap label — undefined means no cap configured. */
+export function formatFlowCostCap(maxCost?: number): string {
+  if (maxCost == null) return "No cap";
+  return `Cap ${maxCost.toFixed(2)}`;
+}
+
+/** Per-invocation signal cost label. */
+export function formatSignalRuntimeCost(cost?: number): string {
+  if (cost == null || cost <= 0) return "No runtime cost";
+  return `Cost ${cost.toFixed(2)}`;
+}
+
+export function formatEvalTimeout(seconds?: number): string {
+  if (seconds == null) return "";
+  return `${seconds}s eval limit`;
+}
