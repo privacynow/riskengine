@@ -19,12 +19,12 @@ test("workflow: libraries, test lab, and audit detail", async ({ page }) => {
   await navigateSidebar(page, "Signal Library");
   await page.waitForSelector(".signals-view", { timeout: 10000 });
   await page.getByRole("button", { name: "Load all" }).click();
-  await page.waitForSelector(".signals-view .resource-table tbody tr", { timeout: 10000 });
+  await page.waitForSelector(".signals-view .list-row", { timeout: 10000 });
 
   await navigateSidebar(page, "Decision Flows");
   await page.waitForSelector(".checkpoints-view", { timeout: 10000 });
   await page.getByRole("button", { name: "Load all" }).click();
-  await page.waitForSelector(".checkpoints-view .resource-table tbody tr", { timeout: 10000 });
+  await page.waitForSelector(".checkpoints-view .list-row", { timeout: 10000 });
 
   await navigateSidebar(page, "Test Lab");
   await page.waitForSelector(".decision-test-view", { timeout: 10000 });

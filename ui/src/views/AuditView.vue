@@ -233,6 +233,16 @@ watch(
   { immediate: true }
 );
 
+watch(
+  () => route.query.signal_log,
+  (signalLogId) => {
+    if (typeof signalLogId === "string" && signalLogId) {
+      selectSignalLog(signalLogId);
+    }
+  },
+  { immediate: true }
+);
+
 function onEntityTypeChange() {
   closeDetail();
   const name = entityType.value === "signal_logs" ? "audit-signal-logs" : "audit-decisions";
@@ -249,7 +259,7 @@ function openDecision(id: string) {
 }
 
 function openSignalLog(id: string) {
-  selectSignalLog(id);
+  router.push(routeWithTenant({ name: "audit-signal-logs", query: { signal_log: id } }));
 }
 
 function closePanel() {

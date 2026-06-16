@@ -83,7 +83,7 @@ async function main() {
     console.log("-> Assert app shell and routed content");
     await page.waitForSelector(".app-shell", { timeout: 15000 });
     await page.waitForSelector(".top-bar", { timeout: 10000 });
-    await page.waitForSelector(".tenant-context-bar", { timeout: 10000 });
+    await page.waitForSelector(".context-chip", { timeout: 10000 });
     await page.waitForSelector("main.page-content", { timeout: 10000 });
     await page.waitForSelector(".overview-view", { timeout: 10000 });
 
@@ -94,12 +94,12 @@ async function main() {
     console.log("-> Select tenant");
     await selectFirstTenant(page);
     await page.waitForSelector(".overview-view .stat-grid", { timeout: 10000 });
-    if ((await page.locator(".stat-card").count()) < 3) {
+    if ((await page.locator(".stat-card").count()) < 6) {
       fail("overview stat cards missing");
     }
 
     console.log("-> Navigate to Signal Library and open create form");
-    await page.getByRole("link", { name: "Signal Library" }).click();
+    await page.getByRole("link", { name: "Signal Library", exact: true }).click();
     await page.waitForSelector(".signals-view", { timeout: 10000 });
     await page.getByRole("button", { name: "New signal" }).click();
     await page.waitForSelector(".signal-form", { timeout: 10000 });
@@ -112,7 +112,7 @@ async function main() {
     }
 
     console.log("-> Navigate to Decision Flows and open create form");
-    await page.getByRole("link", { name: "Decision Flows" }).click();
+    await page.getByRole("link", { name: "Decision Flows", exact: true }).click();
     await page.waitForSelector(".checkpoints-view", { timeout: 10000 });
     await page.getByRole("button", { name: "New flow" }).click();
     await page.waitForSelector(".checkpoint-form", { timeout: 10000 });

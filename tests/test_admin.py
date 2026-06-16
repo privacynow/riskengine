@@ -8,7 +8,7 @@ from tests.conftest import OTHER_TENANT, SAMPLE_TENANT, TEST_ADMIN_TOKEN, TEST_S
 
 @pytest.fixture
 def client():
-    from main import app
+    from engine.main import app
 
     return TestClient(app)
 
@@ -242,7 +242,7 @@ class TestAdminHygiene:
         assert all(signal["has_bearer_token"] is False for signal in copied_links)
 
     def test_copy_tenant_preserves_stale_signal_associations(self, client):
-        from db import db_cursor
+        from engine.db import db_cursor
 
         old_signal_id = None
         new_signal_id = None
@@ -329,7 +329,7 @@ class TestAdminHygiene:
                     conn.commit()
 
     def test_historical_decision_redacts_param_values(self, client):
-        from db import db_cursor
+        from engine.db import db_cursor
 
         decision_id = "55555555-5555-5555-5555-555555555555"
         signal_log_id = "66666666-6666-6666-6666-666666666666"
@@ -430,7 +430,7 @@ class TestAdminHygiene:
         assert resp.status_code == 422
 
     def test_search_signal_logs_redacts_param_values(self, client):
-        from db import db_cursor
+        from engine.db import db_cursor
 
         decision_id = "77777777-7777-7777-7777-777777777777"
         signal_log_id = "88888888-8888-8888-8888-888888888888"

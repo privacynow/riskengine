@@ -1,6 +1,6 @@
 from fastapi import Depends, Request
 
-from auth import reject_supplied_tenant
+from ..auth import reject_supplied_tenant
 
 
 async def reject_runtime_tenant_query(request: Request) -> None:

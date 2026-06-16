@@ -5,14 +5,21 @@
     </div>
     <aside class="sidebar">
       <div class="sidebar-brand">
-        <img :src="faviconUrl" alt="" class="brand-icon" />
-        <span>Decision Engine</span>
+        <div class="sidebar-product-mark">
+          <img :src="faviconUrl" alt="" class="brand-icon" />
+        </div>
+        <h1 class="brand-title">Decision Engine</h1>
       </div>
       <SidebarNav />
+      <footer class="sidebar-footer">
+        <p class="sidebar-footer-text">
+          Operations console
+          <span class="sidebar-footer-sub">Multi-tenant decision flows</span>
+        </p>
+      </footer>
     </aside>
     <div class="app-column">
       <TopBar />
-      <TenantSwitcher />
       <NoticeBanner />
       <main class="page-content">
         <slot />
@@ -31,7 +38,6 @@ import { storeToRefs } from "pinia";
 import { SHOW_DEV_DEMO_UI } from "@/app/config";
 import SidebarNav from "@/components/layout/SidebarNav.vue";
 import TopBar from "@/components/layout/TopBar.vue";
-import TenantSwitcher from "@/components/layout/TenantSwitcher.vue";
 import NoticeBanner from "@/components/layout/NoticeBanner.vue";
 import { useUiStore } from "@/stores/uiStore";
 

@@ -2,7 +2,7 @@
 
 import pytest
 
-from services.security import (
+from engine.services.security import (
     admin_signal_secret_fields,
     create_restricted_evaluator,
     resolve_bearer_token_for_persist,
@@ -42,7 +42,7 @@ class TestOutboundUrlPolicy:
 
 class TestTemplateRedaction:
     def test_redacts_authorization_header_line(self):
-        from services.security import redact_template_for_response
+        from engine.services.security import redact_template_for_response
 
         raw = "Authorization: Bearer super-secret\nContent-Type: application/json"
         redacted = redact_template_for_response(raw)
@@ -51,13 +51,13 @@ class TestTemplateRedaction:
         assert "Content-Type: application/json" in redacted
 
     def test_detects_embedded_credentials(self):
-        from services.security import contains_embedded_credential
+        from engine.services.security import contains_embedded_credential
 
         assert contains_embedded_credential('{"api_key": "abc123"}')
         assert not contains_embedded_credential("Content-Type: application/json")
 
     def test_rejects_sensitive_placeholder_names(self):
-        from services.security import contains_embedded_credential
+        from engine.services.security import contains_embedded_credential
 
         assert contains_embedded_credential("X-Custom: %api_key%")
         assert contains_embedded_credential('{"key": "%token%"}')
@@ -66,7 +66,7 @@ class TestTemplateRedaction:
 
 class TestParamMapRedaction:
     def test_redacts_sensitive_param_names(self):
-        from services.security import redact_param_map_for_response
+        from engine.services.security import redact_param_map_for_response
 
         redacted = redact_param_map_for_response(
             {
@@ -82,7 +82,7 @@ class TestParamMapRedaction:
         assert "secret-key" not in str(redacted)
 
     def test_redacts_credential_like_values(self):
-        from services.security import redact_param_map_for_response
+        from engine.services.security import redact_param_map_for_response
 
         redacted = redact_param_map_for_response(
             {"note": "Authorization: Bearer embedded-secret"}
@@ -91,7 +91,7 @@ class TestParamMapRedaction:
         assert "[REDACTED]" in redacted["note"]
 
     def test_redacts_nested_json_credential_values(self):
-        from services.security import redact_param_map_for_response
+        from engine.services.security import redact_param_map_for_response
 
         raw = '{"headers": {"Authorization": "Bearer secret"}}'
         redacted = redact_param_map_for_response({"payload": raw})["payload"]

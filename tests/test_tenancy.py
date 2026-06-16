@@ -2,8 +2,8 @@ import os
 
 import pytest
 
-from db import db_cursor
-from services.tenancy import (
+from engine.db import db_cursor
+from engine.services.tenancy import (
     fetch_current_checkpoint_row,
     fetch_current_signal_row,
     fetch_executable_signal_rows,

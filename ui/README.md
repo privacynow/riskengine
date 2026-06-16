@@ -116,4 +116,4 @@ Tenant-scoped stores call `requireTenantId()` from `tenantScope.ts` before list/
 
 ## Static serving (FastAPI)
 
-`main.py` class `AdminSPAStaticFiles` serves `ui/dist/`. Missing files with extensions like `.js` or `.css` return `404`. Extensionless document paths return `index.html` for Vue Router.
+`engine/main.py` class `AdminSPAStaticFiles` serves `ui/dist/`. Missing files with extensions like `.js` or `.css` return `404`. Extensionless document paths return `index.html` for Vue Router.

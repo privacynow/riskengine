@@ -19,6 +19,12 @@ Node.js is build-time only. The Python Docker image contains `ui/dist/` and no `
 ## Directory layout
 
 ```text
+engine/                   # Python application package
+  main.py                 # FastAPI app (uvicorn engine.main:app)
+  auth.py, db.py, config.py, models.py, audit.py, cache.py
+  routes/                 # runtime + admin routers
+  services/               # decision, tenancy, security, …
+  demo/                   # /mock/* stubs
 ui/
   package.json
   package-lock.json
@@ -82,7 +88,7 @@ Domain forms keep an explicit draft object. Parent views bind with `v-model`; su
 
 ## SPA static file serving
 
-`main.py` mounts `AdminSPAStaticFiles` at `/admin/`:
+`engine/main.py` mounts `AdminSPAStaticFiles` at `/admin/`:
 
 - Extensionless paths (e.g. `/admin/checkpoints`) → `index.html` when no static file exists.
 - Paths ending in `.js`, `.css`, `.map`, images, fonts, `.json` → `404` if missing (no SPA fallback).

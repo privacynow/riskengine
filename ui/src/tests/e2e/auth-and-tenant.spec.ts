@@ -113,7 +113,7 @@ test("sidebar navigation preserves tenant query", async ({ page }) => {
   await expect(page).toHaveURL(new RegExp(`tenant=${tenantId}`));
 });
 
-test("mobile checkpoints list renders cards", async ({ page }) => {
+test("mobile checkpoints list renders list rows", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await authenticate(page);
   const tenantId = await firstTenantId(page);
@@ -122,8 +122,8 @@ test("mobile checkpoints list renders cards", async ({ page }) => {
   await navigateSidebar(page, "Decision Flows");
   await page.waitForSelector(".checkpoints-view", { timeout: 10000 });
   await page.getByRole("button", { name: "Load all" }).click();
-  await page.waitForSelector(".resource-card-list .resource-card", { timeout: 10000 });
-  expect(await page.locator(".resource-card-list .resource-card").count()).toBeGreaterThan(0);
+  await page.waitForSelector(".checkpoints-view .list-row", { timeout: 10000 });
+  expect(await page.locator(".checkpoints-view .list-row").count()).toBeGreaterThan(0);
 });
 
 test("mobile tenants list renders cards", async ({ page }) => {

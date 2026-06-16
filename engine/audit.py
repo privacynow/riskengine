@@ -2,8 +2,8 @@ import asyncio
 import uuid
 from typing import Any, Dict
 
-from config import logger
-from db import db_cursor
+from .config import logger
+from .db import db_cursor
 
 log_queue: asyncio.Queue = asyncio.Queue()
 

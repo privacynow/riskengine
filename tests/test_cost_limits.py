@@ -1,5 +1,5 @@
-from services.decision import partition_signals_by_cost
-from services.tenancy import ExecutableSignalRow
+from engine.services.decision import partition_signals_by_cost
+from engine.services.tenancy import ExecutableSignalRow
 
 
 def _signal(name: str, cost: int, order: int = 1) -> ExecutableSignalRow:

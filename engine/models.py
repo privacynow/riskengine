@@ -2,7 +2,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from auth import TENANT_SUPPLIED_DETAIL
+from .auth import TENANT_SUPPLIED_DETAIL
 
 
 class TenantSuppliedError(Exception):

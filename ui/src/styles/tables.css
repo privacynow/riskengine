@@ -223,6 +223,7 @@ table:not(.resource-table):not(.signal-table):not(.detail-table) td {
 }
 
 .resource-card-header {
+  /* Mobile resource-card layout only — desktop panel cards use .card-header */
   display: flex;
   align-items: flex-start;
   justify-content: space-between;

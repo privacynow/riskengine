@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional
 from fastapi import Depends, HTTPException, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from db import db_cursor
+from .db import db_cursor
 
 AUTH_CONFIG_HELP = (
     "Set DECISION_ENGINE_AUTH_TOKENS (JSON object) or DECISION_ENGINE_AUTH_TOKENS_FILE "

@@ -4,7 +4,7 @@ from typing import Iterator, Tuple
 import psycopg2
 from psycopg2.extensions import connection, cursor
 
-import config
+from . import config
 
 
 def get_db_connection() -> connection:

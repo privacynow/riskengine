@@ -16,6 +16,7 @@
     "audit:high": "npm audit --audit-level=high --omit=optional"
   },
   "dependencies": {
+    "@lucide/vue": "^1.20.0",
     "pinia": "^3.0.3",
     "vue": "^3.5.13",
     "vue-router": "^4.5.1"

@@ -38,91 +38,18 @@
 
       <WorkbenchLayout v-else :split="!!selectedId">
         <template #master>
-          <ResourceTable v-if="items.length">
-            <template #table>
-              <table class="resource-table">
-                <thead>
-                  <tr>
-                    <th>Signal</th>
-                    <th>Type</th>
-                    <th>Cost</th>
-                    <th>Status</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr
-                    v-for="s in items"
-                    :key="s.id"
-                    class="entity-table-row"
-                    :class="{ selected: selectedId === s.id }"
-                    @click="openSignal(s.id)"
-                  >
-                    <td>{{ s.name }}</td>
-                    <td>
-                      <StatusBadge :variant="badge(s.type)" :text="label(s.type)" />
-                    </td>
-                    <td>{{ s.cost ?? 0 }}</td>
-                    <td>
-                      <StatusBadge
-                        :variant="s.is_current_version ? 'current' : 'inactive'"
-                        :text="s.is_current_version ? 'Current' : 'Inactive'"
-                      />
-                      <StatusBadge
-                        v-if="s.has_bearer_token"
-                        variant="endpoint"
-                        text="Secret"
-                      />
-                    </td>
-                    <td @click.stop>
-                      <button
-                        v-if="!s.is_current_version"
-                        type="button"
-                        class="btn-secondary btn-sm"
-                        @click="setCurrentVersion(s.id)"
-                      >
-                        Promote
-                      </button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </template>
-            <template #cards>
-              <div
+          <div v-if="items.length" class="card workbench-list-card">
+            <div class="list-row-stack">
+              <SignalListRow
                 v-for="s in items"
-                :key="'card-' + s.id"
-                class="resource-card card"
-                :class="{ selected: selectedId === s.id }"
-                @click="openSignal(s.id)"
-              >
-                <div class="resource-card-header">
-                  <strong>{{ s.name }}</strong>
-                  <StatusBadge :variant="badge(s.type)" :text="label(s.type)" />
-                </div>
-                <div class="resource-card-meta">
-                  <StatusBadge
-                    :variant="s.is_current_version ? 'current' : 'inactive'"
-                    :text="s.is_current_version ? 'Current' : 'Inactive'"
-                  />
-                  <span class="text-muted">Cost {{ s.cost ?? 0 }}</span>
-                </div>
-                <div class="resource-card-actions" @click.stop>
-                  <button
-                    v-if="!s.is_current_version"
-                    type="button"
-                    class="btn-secondary btn-sm"
-                    @click="setCurrentVersion(s.id)"
-                  >
-                    Promote
-                  </button>
-                  <button type="button" class="btn-ghost btn-sm" @click="openSignal(s.id)">
-                    Open
-                  </button>
-                </div>
-              </div>
-            </template>
-          </ResourceTable>
+                :key="s.id"
+                :signal="s"
+                :selected="selectedId === s.id"
+                @open="openSignal(s.id)"
+                @promote="setCurrentVersion(s.id)"
+              />
+            </div>
+          </div>
           <EmptyState v-else title="No signals" message="Create a signal for this tenant." />
 
           <AppPagination
@@ -198,17 +125,16 @@
 import { computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
-import * as formatters from "@/api/formatters";
 import type { SignalDraft } from "@/api/types";
 import { routeWithTenant } from "@/app/tenantNav";
 import DataToolbar from "@/components/primitives/DataToolbar.vue";
-import ResourceTable from "@/components/primitives/ResourceTable.vue";
 import EmptyState from "@/components/primitives/EmptyState.vue";
 import AppPagination from "@/components/primitives/AppPagination.vue";
 import SignalDetails from "@/components/domain/signals/SignalDetails.vue";
 import SignalForm from "@/components/domain/signals/SignalForm.vue";
 import SignalVariablePanel from "@/components/domain/signals/SignalVariablePanel.vue";
 import PageHeader from "@/components/workbench/PageHeader.vue";
+import SignalListRow from "@/components/workbench/SignalListRow.vue";
 import WorkbenchLayout from "@/components/workbench/WorkbenchLayout.vue";
 import WorkbenchTabs from "@/components/workbench/WorkbenchTabs.vue";
 import StatusBadge from "@/components/workbench/StatusBadge.vue";
@@ -325,14 +251,6 @@ function onCheckpointSearch(query: string) {
 function goToPage(p: number) {
   if (searchTerm.value.trim()) search(p);
   else loadAll(p);
-}
-
-function badge(type: string) {
-  return formatters.signalTypeBadge(type);
-}
-
-function label(type: string) {
-  return formatters.signalTypeLabel(type);
 }
 
 async function onCreateSave(value: SignalDraft) {

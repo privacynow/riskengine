@@ -8,7 +8,7 @@ from tests.conftest import TEST_SAMPLE_TOKEN
 
 @pytest.fixture
 def client():
-    from main import app
+    from engine.main import app
 
     return TestClient(app)
 

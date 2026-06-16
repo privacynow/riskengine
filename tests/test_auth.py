@@ -11,7 +11,7 @@ OTHER_TENANT = "99999999-9999-9999-9999-999999999999"
 
 @pytest.fixture
 def client():
-    from main import app
+    from engine.main import app
 
     return TestClient(app)
 
@@ -136,7 +136,7 @@ class TestAuthIntegration:
 
 class TestAuthUnit:
     def test_auth_configured_in_tests(self):
-        from auth import get_token_map
+        from engine.auth import get_token_map
 
         token_map = get_token_map()
         assert TEST_SAMPLE_TOKEN in token_map

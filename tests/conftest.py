@@ -36,8 +36,8 @@ os.environ["DECISION_ENGINE_AUTH_TOKENS"] = json.dumps(
     }
 )
 
-from config import validate_config
-from auth import initialize_auth
+from engine.config import validate_config
+from engine.auth import initialize_auth
 
 validate_config()
 initialize_auth()

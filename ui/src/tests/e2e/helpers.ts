@@ -42,7 +42,15 @@ export async function navigateSidebar(page: Page, label: string): Promise<void> 
   if (viewport && viewport.width <= 768) {
     await openMobileNav(page);
   }
-  await page.getByRole("link", { name: label }).click();
+  await page.getByRole("link", { name: label, exact: true }).click();
+}
+
+export async function assertNoHorizontalOverflow(page: Page): Promise<void> {
+  const metrics = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    clientWidth: document.documentElement.clientWidth,
+  }));
+  expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
 }
 
 export async function selectTenant(page: Page, tenantId: string): Promise<void> {

@@ -5,9 +5,9 @@ from typing import Any, Dict, Optional
 
 import httpx
 
-from db import db_cursor
-from services.security import create_restricted_evaluator, validate_outbound_signal_url
-from services.templates import parse_headers_string, parse_params_string, render_template
+from ..db import db_cursor
+from .security import create_restricted_evaluator, validate_outbound_signal_url
+from .templates import parse_headers_string, parse_params_string, render_template
 
 
 def coerce_signal_value(val: Any) -> Any:

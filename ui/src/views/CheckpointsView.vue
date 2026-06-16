@@ -48,81 +48,18 @@
 
       <WorkbenchLayout v-else :split="!!selectedId">
         <template #master>
-          <ResourceTable v-if="items.length">
-            <template #table>
-              <table class="resource-table">
-                <thead>
-                  <tr>
-                    <th>Flow</th>
-                    <th>Type</th>
-                    <th>Max cost</th>
-                    <th>Status</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr
-                    v-for="cp in items"
-                    :key="cp.id"
-                    class="entity-table-row"
-                    :class="{ selected: selectedId === cp.id }"
-                    @click="openFlow(cp.id)"
-                  >
-                    <td>{{ cp.name }}</td>
-                    <td>{{ cp.type || "—" }}</td>
-                    <td>{{ cp.max_cost ?? 0 }}</td>
-                    <td>
-                      <StatusBadge
-                        :variant="cp.is_current_version ? 'current' : 'inactive'"
-                        :text="cp.is_current_version ? 'Current' : 'Inactive'"
-                      />
-                    </td>
-                    <td @click.stop>
-                      <button
-                        v-if="!cp.is_current_version"
-                        type="button"
-                        class="btn-secondary btn-sm"
-                        @click="setCurrentVersion(cp.id)"
-                      >
-                        Promote
-                      </button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </template>
-            <template #cards>
-              <div
+          <div v-if="items.length" class="card workbench-list-card">
+            <div class="list-row-stack">
+              <FlowListRow
                 v-for="cp in items"
-                :key="'card-' + cp.id"
-                class="resource-card card"
-                :class="{ selected: selectedId === cp.id }"
-                @click="openFlow(cp.id)"
-              >
-                <div class="resource-card-header">
-                  <strong>{{ cp.name }}</strong>
-                  <span class="text-muted">{{ cp.type }}</span>
-                </div>
-                <StatusBadge
-                  :variant="cp.is_current_version ? 'current' : 'inactive'"
-                  :text="cp.is_current_version ? 'Current' : 'Inactive'"
-                />
-                <div class="resource-card-actions" @click.stop>
-                  <button
-                    v-if="!cp.is_current_version"
-                    type="button"
-                    class="btn-secondary btn-sm"
-                    @click="setCurrentVersion(cp.id)"
-                  >
-                    Promote
-                  </button>
-                  <button type="button" class="btn-ghost btn-sm" @click="openFlow(cp.id)">
-                    Open
-                  </button>
-                </div>
-              </div>
-            </template>
-          </ResourceTable>
+                :key="cp.id"
+                :checkpoint="cp"
+                :selected="selectedId === cp.id"
+                @open="openFlow(cp.id)"
+                @promote="setCurrentVersion(cp.id)"
+              />
+            </div>
+          </div>
           <EmptyState v-else title="No decision flows" message="Create a flow for this tenant." />
 
           <AppPagination
@@ -194,11 +131,11 @@ import { storeToRefs } from "pinia";
 import type { CheckpointDraft } from "@/api/types";
 import { routeWithTenant } from "@/app/tenantNav";
 import DataToolbar from "@/components/primitives/DataToolbar.vue";
-import ResourceTable from "@/components/primitives/ResourceTable.vue";
 import EmptyState from "@/components/primitives/EmptyState.vue";
 import AppPagination from "@/components/primitives/AppPagination.vue";
 import CheckpointForm from "@/components/domain/checkpoints/CheckpointForm.vue";
 import PageHeader from "@/components/workbench/PageHeader.vue";
+import FlowListRow from "@/components/workbench/FlowListRow.vue";
 import WorkbenchLayout from "@/components/workbench/WorkbenchLayout.vue";
 import WorkbenchTabs from "@/components/workbench/WorkbenchTabs.vue";
 import StatusBadge from "@/components/workbench/StatusBadge.vue";

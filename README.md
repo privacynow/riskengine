@@ -7,13 +7,11 @@ Multi-tenant checkpoint evaluation: signals + DSL, audit logging, and a Vue admi
 | Path | What it is |
 |------|------------|
 | [`ui/`](ui/) | Admin SPA (Vue 3 + TypeScript); built to `ui/dist/`, served at `/admin/` |
-| [`routes/`](routes/) | FastAPI routers — runtime (`/decisions`) and admin (`/ui/*`) |
-| [`services/`](services/) | Decision engine, tenancy resolution, security, pagination |
+| [`engine/`](engine/) | Python app — FastAPI entry (`engine.main`), auth, routes, services, demo mocks |
 | [`sql/`](sql/) | Postgres schema and idempotent demo seed ([`sql/README.md`](sql/README.md)) |
 | [`scripts/`](scripts/) | Demo env, smoke tests, Docker helpers |
 | [`tests/`](tests/) | Pytest (auth, tenancy, admin hygiene) |
 | [`docs/`](docs/) | Roadmap, workflows, API auth notes, deployment |
-| `main.py`, `auth.py`, … | App entry and core Python modules (flat layout for this prototype) |
 | `Dockerfile`, `docker-compose.yml` | Container build and local stack |
 
 **Docs:** [Roadmap](docs/ROADMAP.md) · [UI workflows](docs/UI_WORKFLOWS.md) · [API auth](docs/API.md) · [Design notes](docs/DESIGN_NOTES.md)
@@ -41,19 +39,19 @@ Multi-tenant checkpoint evaluation: signals + DSL, audit logging, and a Vue admi
 
 ## Architecture
 
-FastAPI app split into modules:
+FastAPI app under [`engine/`](engine/):
 
 | Module | Role |
 |--------|------|
-| `main.py` | App entry, lifespan, `/admin/` static mount with SPA fallback |
-| `auth.py` | Bearer token validation (env-configured only) |
-| `db.py` | Postgres connection helper |
-| `models.py` | Pydantic request/response models |
-| `services/decision.py` | Decision orchestration |
-| `services/tenancy.py` | Current checkpoint/signal resolution |
-| `routes/runtime.py` | `/decisions`, `/checkpoints`, `/signals` |
-| `routes/admin.py` | `/ui/*` admin CRUD |
-| `demo/mocks.py` | `/mock/*` stub endpoints (hidden from OpenAPI) |
+| `engine/main.py` | App entry, lifespan, `/admin/` static mount with SPA fallback |
+| `engine/auth.py` | Bearer token validation (env-configured only) |
+| `engine/db.py` | Postgres connection helper |
+| `engine/models.py` | Pydantic request/response models |
+| `engine/services/decision.py` | Decision orchestration |
+| `engine/services/tenancy.py` | Current checkpoint/signal resolution |
+| `engine/routes/runtime.py` | `/decisions`, `/checkpoints`, `/signals` |
+| `engine/routes/admin.py` | `/ui/*` admin CRUD |
+| `engine/demo/mocks.py` | `/mock/*` stub endpoints (hidden from OpenAPI) |
 | `ui/` | Vue 3 admin SPA (built to `ui/dist/`, served at `/admin/`) |
 
 OpenAPI (including `BearerAuth`) is at `/docs`.
@@ -122,7 +120,7 @@ The admin console is a **Vue 3 + TypeScript + Vite** SPA with **Pinia** stores a
 | Tenant-scoped reads | List/search calls pass `tenant_id`; the browser does not receive cross-tenant config rows |
 | Dev vs prod UI | `npm run dev` shows a development banner and local token hints; production `npm run build` omits that chrome (`SHOW_DEV_DEMO_UI`) |
 
-`main.py` mounts `ui/dist/` at `/admin/`. Extensionless paths (e.g. `/admin/checkpoints`) fall back to `index.html` for client-side routing. Missing static assets (`.js`, `.css`, etc.) return `404`, not the SPA shell.
+`engine/main.py` mounts `ui/dist/` at `/admin/`. Extensionless paths (e.g. `/admin/checkpoints`) fall back to `index.html` for client-side routing. Missing static assets (`.js`, `.css`, etc.) return `404`, not the SPA shell.
 
 ---
 
@@ -202,8 +200,8 @@ env -i PATH="${PATH}" HOME="${HOME:-}" \
 2. Apply `sql/01_schema.sql`, then `sql/02_sample_data.sql`.
 3. `bash scripts/create_demo_env.sh` and `set -a && source .env.local && set +a`
 4. `python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt`
-5. `cd ui && npm ci && npm run build` — required; `main.py` refuses to start without `ui/dist/`
-6. `uvicorn main:app --host 0.0.0.0 --port 8000`
+5. `cd ui && npm ci && npm run build` — required; `engine.main` refuses to start without `ui/dist/`
+6. `uvicorn engine.main:app --host 0.0.0.0 --port 8000`
 
 For UI-only work: `cd ui && npm run dev` (Vite on its own port; API must still run on `:8000` for `/ui/*` calls).
 

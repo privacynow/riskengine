@@ -19,6 +19,7 @@ ui/node_modules/
 ui/test-results/
 ui/playwright-report/
 ui/playwright/.cache/
+ui/visual-review/
 scripts/node_modules/
 *.pem
 postgres_data/

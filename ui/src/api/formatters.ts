@@ -29,6 +29,18 @@ export function formatDate(value: string | undefined | null): string {
   }
 }
 
+export function decisionOutcomeVariant(value?: string): string {
+  const normalized = (value || "").trim().toLowerCase();
+  if (!normalized) return "outcome-neutral";
+  if (["approve", "approved", "pass", "accept", "yes", "true"].some((k) => normalized.includes(k))) {
+    return "outcome-positive";
+  }
+  if (["deny", "denied", "reject", "rejected", "fail", "failed", "no", "false"].some((k) => normalized.includes(k))) {
+    return "outcome-negative";
+  }
+  return "outcome-neutral";
+}
+
 export function formatJson(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (typeof value === "string") return value;

@@ -3,8 +3,9 @@
  */
 
 /* ── Buttons ── */
+/* Variant classes (.btn-primary, etc.) are self-contained; .btn is optional alias. */
 
-.btn {
+:where(.btn, .btn-primary, .btn-secondary, .btn-ghost, .btn-danger) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -12,14 +13,14 @@
   padding: var(--space-2) var(--space-4);
   border: 1px solid transparent;
   border-radius: var(--radius-md);
-  background: var(--color-primary);
-  color: var(--color-text-inverse);
   font-family: inherit;
   font-size: var(--text-sm);
   font-weight: var(--font-medium);
   line-height: var(--leading-tight);
   white-space: nowrap;
   cursor: pointer;
+  text-decoration: none;
+  box-sizing: border-box;
   transition:
     background var(--transition-fast),
     border-color var(--transition-fast),
@@ -27,26 +28,19 @@
     box-shadow var(--transition-fast);
 }
 
-.btn:hover {
-  background: var(--color-primary-hover);
-}
-
-.btn:active {
-  background: var(--color-primary-active);
-}
-
-.btn:focus-visible {
+:where(.btn, .btn-primary, .btn-secondary, .btn-ghost, .btn-danger):focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
 }
 
-.btn:disabled,
-.btn[disabled] {
+:where(.btn, .btn-primary, .btn-secondary, .btn-ghost, .btn-danger):disabled,
+:where(.btn, .btn-primary, .btn-secondary, .btn-ghost, .btn-danger)[disabled] {
   opacity: 0.5;
   cursor: not-allowed;
   pointer-events: none;
 }
 
+.btn,
 .btn-primary,
 .btn.btn-primary {
   background: var(--color-primary);
@@ -54,10 +48,17 @@
   border-color: var(--color-primary);
 }
 
+.btn:hover,
 .btn-primary:hover,
 .btn.btn-primary:hover {
   background: var(--color-primary-hover);
   border-color: var(--color-primary-hover);
+}
+
+.btn:active,
+.btn-primary:active,
+.btn.btn-primary:active {
+  background: var(--color-primary-active);
 }
 
 .btn-secondary,
@@ -167,6 +168,24 @@
   border-color: #ddd6fe;
 }
 
+.badge-outcome-positive {
+  background: var(--color-success-subtle);
+  color: var(--color-success-text);
+  border-color: var(--color-success-border);
+}
+
+.badge-outcome-negative {
+  background: var(--color-danger-subtle);
+  color: var(--color-danger-text);
+  border-color: var(--color-danger-border);
+}
+
+.badge-outcome-neutral {
+  background: var(--color-badge-endpoint-subtle);
+  color: var(--color-badge-endpoint);
+  border-color: #c7d2fe;
+}
+
 button.version-badge {
   cursor: pointer;
   transition: background var(--transition-fast), border-color var(--transition-fast);
@@ -200,8 +219,10 @@ button.version-badge:active {
 
 .card-header h2,
 .card-header h3,
+.card-header h4,
 .panel-header h2,
-.panel-header h3 {
+.panel-header h3,
+.panel-header h4 {
   margin: 0;
   font-size: var(--text-md);
   font-weight: var(--font-semibold);
@@ -403,17 +424,44 @@ button.version-badge:active {
   opacity: 0.6;
 }
 
-.empty-state-title {
+.empty-state-title,
+.empty-state h4 {
   margin: 0;
   font-size: var(--text-md);
   font-weight: var(--font-semibold);
   color: var(--color-text-secondary);
 }
 
-.empty-state-description {
+.empty-state-description,
+.empty-state p {
   margin: 0;
   max-width: 36ch;
   line-height: var(--leading-relaxed);
+}
+
+.empty-state--panel {
+  padding: var(--space-6) var(--space-5);
+  background: transparent;
+  border: none;
+}
+
+.empty-state--panel .empty-state-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: var(--space-2);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-sunken);
+  color: var(--color-text-muted);
+}
+
+.panel-card-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
 }
 
 /* ── Page header ── */
@@ -646,6 +694,7 @@ code {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-4);
+  align-items: start;
 }
 
 .simple-list {

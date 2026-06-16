@@ -28,7 +28,7 @@ Signal URLs are checked for scheme, obvious private IP literals, and known metad
 
 ## Admin UI
 
-Source: `ui/src/`. Production bundles: `ui/dist/`, served at `/admin/` by `main.py`.
+Source: `ui/src/`. Production bundles: `ui/dist/`, served at `/admin/` by `engine/main.py`.
 
 | Topic | Behavior |
 |-------|----------|

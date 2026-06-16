@@ -3,10 +3,10 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from auth import AuthContext, require_admin, resolve_admin_tenant_id
-from config import logger
-from db import db_cursor, get_db_connection
-from models import (
+from ..auth import AuthContext, require_admin, resolve_admin_tenant_id
+from ..config import logger
+from ..db import db_cursor, get_db_connection
+from ..models import (
     AdminTestDecisionRequest,
     CheckpointCreateUpdate,
     CheckpointSignalCreateUpdate,
@@ -16,10 +16,10 @@ from models import (
     TenantCreateUpdate,
     VariableValueCreateUpdate,
 )
-from services.admin_responses import admin_mutation
-from services.decision import execute_decision
-from services.pagination import build_paginated_response, paginate_query
-from services.security import (
+from ..services.admin_responses import admin_mutation
+from ..services.decision import execute_decision
+from ..services.pagination import build_paginated_response, paginate_query
+from ..services.security import (
     admin_signal_secret_fields,
     contains_embedded_credential,
     has_bearer_token_value,
@@ -27,7 +27,7 @@ from services.security import (
     redact_template_for_response,
     resolve_bearer_token_for_persist,
 )
-from services.templates import extract_placeholders_from_text
+from ..services.templates import extract_placeholders_from_text
 
 router = APIRouter(tags=["admin"], dependencies=[Depends(require_admin)])
 

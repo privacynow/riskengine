@@ -85,5 +85,5 @@ bash scripts/smoke_test.sh
 ## Admin UI at runtime
 
 - Served from `ui/dist/` inside the container at `/admin/`.
-- If `ui/dist/` is missing at startup, `main.py` raises `RuntimeError` with build instructions.
+- If `ui/dist/` is missing at startup, `engine.main` raises `RuntimeError` with build instructions.
 - To rebuild the UI without changing Python code: `cd ui && npm ci && npm run build`, then rebuild the image or copy `dist/` into the running layout before restart.

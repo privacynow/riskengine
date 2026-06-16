@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import HTTPException
 from psycopg2.extensions import cursor
 
-from services.templates import extract_placeholders_from_text
+from .templates import extract_placeholders_from_text
 
 
 @dataclass(frozen=True)

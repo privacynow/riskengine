@@ -59,6 +59,10 @@ export async function loadRouteData(
       if (typeof decisionId === "string" && decisionId) {
         await audit.selectDecision(decisionId);
       }
+      const signalLogId = to.query?.signal_log;
+      if (typeof signalLogId === "string" && signalLogId) {
+        audit.selectSignalLog(signalLogId);
+      }
     }
     return;
   }

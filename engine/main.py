@@ -8,13 +8,13 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from audit import log_processor, log_queue
-from auth import initialize_auth
-from config import APP_TITLE, logger, validate_config
-from demo.mocks import mock_service_response
-from services.security import is_local_mock_client
-from models import TenantSuppliedError
-from routes import admin, runtime
+from .audit import log_processor, log_queue
+from .auth import initialize_auth
+from .config import APP_TITLE, logger, validate_config
+from .demo.mocks import mock_service_response
+from .services.security import is_local_mock_client
+from .models import TenantSuppliedError
+from .routes import admin, runtime
 
 OPENAPI_SECURITY_SCHEME = {
     "type": "http",
@@ -129,7 +129,7 @@ async def mock_service(mock_name: str, request: Request):
 app.include_router(runtime.router)
 app.include_router(admin.router)
 
-UI_DIST = Path(__file__).resolve().parent / "ui" / "dist"
+UI_DIST = Path(__file__).resolve().parent.parent / "ui" / "dist"
 if not UI_DIST.is_dir():
     raise RuntimeError(
         f"Admin UI build missing at {UI_DIST}. Run: cd ui && npm ci && npm run build"

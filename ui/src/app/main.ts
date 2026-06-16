@@ -10,6 +10,7 @@ import "@/styles/components.css";
 import "@/styles/forms.css";
 import "@/styles/tables.css";
 import "@/styles/workbench.css";
+import "@/styles/shell.css";
 
 const app = createApp(App);
 app.use(pinia);
