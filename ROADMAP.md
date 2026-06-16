@@ -31,8 +31,10 @@ Working prototype — not production-ready.
 - [x] UI signal types aligned with backend endpoint types
 - [x] Structured admin UI notifications (replacing raw `alert()`)
 - [x] CI: pytest + smoke on push/PR
+- [x] Runtime Docker image: Python-only (whitelist COPY; no Node artifacts)
+- [x] Further UI modularization (Vue 3 + Vite under `ui/src/`)
+- [x] Browser/E2E smoke (`scripts/ui_smoke.sh` + Playwright)
 - [ ] Admin mutation response contract normalization
-- [ ] Further UI modularization (split monolithic admin files)
 - [ ] Curate sample SQL fixtures
 
 ## Production gaps (out of scope for demo)
@@ -44,7 +46,6 @@ Working prototype — not production-ready.
 - `can_run_in_parallel` scheduling
 - Immutable config writes (version-on-write for checkpoints/signals)
 - Structured audit with `actor_id` on all mutations
-- Browser/E2E test suite
 
 ## Immutable config writes (next backend milestone)
 

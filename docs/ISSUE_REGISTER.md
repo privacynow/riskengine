@@ -8,6 +8,7 @@ Baseline: `800cd54` + showcase hygiene work in progress. Severity: P0 publish bl
 | P0-SECRETS | P0 | Git | No committed tokens, `.env.local`, or auth files | Closed | `800cd54` |
 | P1-UNCOMMITTED | P1 | Git | Security refactor only in working tree | Closed | committed `800cd54` |
 | P1-STALE-API | P1 | Docs | Stale `api/*.yml` contradict runtime | Closed | `7fcdd2d` |
+| P1-DOCKER-NODE | P1 | Docker | Runtime Python image shipped Node source and node_modules | Closed | this branch |
 | P2-TEMPLATE-LEAK | P2 | Security | Template/header secrets in API responses | Closed | `800cd54` |
 | P2-TEMPLATE-WRITE | P2 | Security | Embedded credentials in template writes | Closed | `800cd54` + placeholder names |
 | P2-TENANT-COPY-TOKEN | P2 | Security | Tenant copy clones bearer tokens | Closed | `800cd54` |

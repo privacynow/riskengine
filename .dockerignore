@@ -10,6 +10,9 @@ __pycache__/
 auth.tokens.local.json
 .env.local
 node_modules/
+ui/node_modules/
+scripts/node_modules/
+ui/dist/
 *.pem
 docs/internal/
 risk_engine.txt

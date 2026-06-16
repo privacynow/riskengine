@@ -12,9 +12,15 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code only. Local secrets are excluded via .dockerignore
-# (auth.tokens.local.json, .env.local) and mounted at runtime by Compose.
-COPY . .
+# Runtime whitelist only — no Node toolchain, source tree, or host node_modules.
+COPY *.py ./
+COPY routes/ ./routes/
+COPY services/ ./services/
+COPY demo/ ./demo/
+COPY sql/ ./sql/
+COPY tests/ ./tests/
+COPY pytest.ini ./
+COPY README.md ./
 COPY --from=ui-build /ui/dist ./ui/dist
 
 # Expose port 8000 for the FastAPI server
