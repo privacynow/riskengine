@@ -7,6 +7,11 @@ services:
     environment:
       POSTGRES_DB: risk_engine_db
       POSTGRES_USER: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d risk_engine_db"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
@@ -17,7 +22,8 @@ services:
     build: .
     container_name: decision-engine-app
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     env_file:
       - .env.local
     environment:

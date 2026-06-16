@@ -33,6 +33,12 @@
         <label>Expression body</label>
         <textarea v-model="local.expression_body" class="code-input" rows="4" />
       </div>
+      <DslPreflightPanel
+        v-if="local.type === 'expression'"
+        :expression="local.expression_body"
+        expression-kind="signal_expression"
+        hint-when-ok="Expression is valid. Unresolved names must be supplied by request parameters or prior signals."
+      />
       <div v-if="local.type === 'function'" class="form-field">
         <label>Function params template</label>
         <textarea v-model="local.function_params_template" class="code-input" rows="2" />
@@ -95,7 +101,7 @@
         <div class="form-field checkbox-field">
           <label>
             <input v-model="local.can_run_in_parallel" type="checkbox" />
-            Can run in parallel
+            May run in parallel
           </label>
         </div>
         <div class="form-field checkbox-field">
@@ -131,6 +137,7 @@
 import { computed, ref, watch } from "vue";
 import { isEndpointSignalType } from "@/api/formatters";
 import type { SignalDraft } from "@/api/types";
+import DslPreflightPanel from "@/components/workbench/DslPreflightPanel.vue";
 import FormSection from "@/components/workbench/FormSection.vue";
 import FieldRow from "@/components/workbench/FieldRow.vue";
 import SecretInput from "@/components/workbench/SecretInput.vue";

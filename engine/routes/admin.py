@@ -8,16 +8,19 @@ from ..config import logger
 from ..db import db_cursor, get_db_connection
 from ..models import (
     AdminTestDecisionRequest,
-    CheckpointCreateUpdate,
+    CheckpointCreateRequest,
+    CheckpointMetadataUpdate,
     CheckpointSignalCreateUpdate,
     DecisionRequest,
     DecisionResponse,
     DslPreflightRequest,
     PromotionRequest,
     SignalCreateUpdate,
+    SignalMetadataUpdate,
     TenantCreateUpdate,
     VariableValueCreateUpdate,
 )
+from ..services.dsl import validate_expression
 from ..services.dsl_preflight import preflight_dsl
 from ..services.promotion_audit import (
     normalize_promotion_reason,
@@ -35,6 +38,7 @@ from ..services.security import (
     resolve_bearer_token_for_persist,
 )
 from ..services.templates import extract_placeholders_from_text
+from ..types import UuidStr
 
 router = APIRouter(tags=["admin"], dependencies=[Depends(require_admin)])
 
@@ -332,30 +336,105 @@ def create_tenant(payload: TenantCreateUpdate):
         conn.close()
 
 
+def _validate_checkpoint_dsl(dsl_expression: str, signal_ids: list[str], cur) -> None:
+    signal_names: list[str] = []
+    if signal_ids:
+        cur.execute(
+            "SELECT name FROM signals WHERE id = ANY(%s::uuid[])",
+            (signal_ids,),
+        )
+        signal_names = [row[0] for row in cur.fetchall()]
+    result = validate_expression(dsl_expression, signal_names, "strict")
+    if not result.ok:
+        raise HTTPException(status_code=422, detail="; ".join(result.errors))
+
+
+def _resolve_checkpoint_signal_ids(cur, payload: CheckpointCreateRequest) -> list[str]:
+    signal_ids = list(payload.signal_ids)
+    if signal_ids:
+        return signal_ids
+    if not payload.copy_from_checkpoint_id:
+        return []
+    cur.execute(
+        """
+        SELECT signal_id FROM checkpoint_signals
+         WHERE checkpoint_id = %s
+        """,
+        (payload.copy_from_checkpoint_id,),
+    )
+    return [str(row[0]) for row in cur.fetchall()]
+
+
+def _assert_signals_same_tenant(cur, tenant_id: str, signal_ids: list[str]) -> None:
+    if not signal_ids:
+        return
+    cur.execute(
+        """
+        SELECT id FROM signals
+         WHERE id = ANY(%s::uuid[])
+           AND tenant_id = %s
+        """,
+        (signal_ids, tenant_id),
+    )
+    found = {str(row[0]) for row in cur.fetchall()}
+    missing = [sid for sid in signal_ids if sid not in found]
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Signals not found for tenant: {', '.join(missing)}",
+        )
+
+
 @router.post("/ui/checkpoints")
-def create_checkpoint(payload: CheckpointCreateUpdate):
+def create_checkpoint(payload: CheckpointCreateRequest):
     conn = get_db_connection()
     cur = conn.cursor()
-    
+
     try:
-        # Create new checkpoint version
-        cur.execute("""
+        signal_ids = _resolve_checkpoint_signal_ids(cur, payload)
+        _assert_signals_same_tenant(cur, payload.tenant_id, signal_ids)
+        _validate_checkpoint_dsl(payload.dsl_expression, signal_ids, cur)
+
+        cur.execute(
+            """
             INSERT INTO checkpoints (
                 tenant_id, name, description, type, dsl_expression,
                 method_of_call, max_cost, override_cost_flag, timeout_seconds
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
-        """, (
-            payload.tenant_id, payload.name, payload.description,
-            payload.type, payload.dsl_expression, payload.method_of_call,
-            payload.max_cost, payload.override_cost_flag, payload.timeout_seconds
-        ))
-        
-        new_checkpoint_id = cur.fetchone()[0]
-        
+            """,
+            (
+                payload.tenant_id,
+                payload.name,
+                payload.description,
+                payload.type,
+                payload.dsl_expression,
+                payload.method_of_call,
+                payload.max_cost,
+                payload.override_cost_flag,
+                payload.timeout_seconds,
+            ),
+        )
+
+        new_checkpoint_id = str(cur.fetchone()[0])
+        association_count = 0
+        for signal_id in signal_ids:
+            cur.execute(
+                """
+                INSERT INTO checkpoint_signals (checkpoint_id, signal_id)
+                VALUES (%s, %s)
+                """,
+                (new_checkpoint_id, signal_id),
+            )
+            association_count += 1
+
         conn.commit()
-        return admin_mutation("created", new_checkpoint_id)
-    
+        return admin_mutation(
+            "created",
+            new_checkpoint_id,
+            association_count=association_count,
+        )
+
     except Exception as e:
         conn.rollback()
         raise_admin_error(e, context="create_checkpoint failed")
@@ -371,6 +450,14 @@ def create_signal(payload: SignalCreateUpdate):
     
     try:
         _validate_signal_templates(payload)
+        if payload.type == "expression" and payload.expression_body:
+            result = validate_expression(
+                payload.expression_body,
+                [],
+                "warn_unknown",
+            )
+            if not result.ok:
+                raise HTTPException(status_code=422, detail="; ".join(result.errors))
         bearer_token = _resolve_signal_bearer_token(cur, payload)
         # Create new signal version
         cur.execute("""
@@ -395,7 +482,39 @@ def create_signal(payload: SignalCreateUpdate):
         ))
         
         new_signal_id = cur.fetchone()[0]
-        
+
+        if payload.copy_from_signal_id:
+            cur.execute(
+                """
+                SELECT tenant_id FROM signals WHERE id = %s
+                """,
+                (payload.copy_from_signal_id,),
+            )
+            source = cur.fetchone()
+            if not source:
+                raise HTTPException(status_code=404, detail="Source signal not found.")
+            if str(source[0]) != payload.tenant_id:
+                raise HTTPException(status_code=422, detail="Source signal tenant mismatch.")
+
+            cur.execute(
+                """
+                INSERT INTO signal_variable_values (id, signal_id, name, value)
+                SELECT uuid_generate_v4(), %s, name, value
+                  FROM signal_variable_values
+                 WHERE signal_id = %s
+                """,
+                (new_signal_id, payload.copy_from_signal_id),
+            )
+            cur.execute(
+                """
+                INSERT INTO checkpoint_signals (checkpoint_id, signal_id)
+                SELECT checkpoint_id, %s
+                  FROM checkpoint_signals
+                 WHERE signal_id = %s
+                """,
+                (new_signal_id, payload.copy_from_signal_id),
+            )
+
         conn.commit()
         return admin_mutation("created", new_signal_id)
     
@@ -431,7 +550,7 @@ def list_all_tenants():
 
 
 @router.get("/ui/tenants/{tenant_id}")
-def get_tenant(tenant_id: str):
+def get_tenant(tenant_id: UuidStr):
     conn = None
     try:
         conn = get_db_connection()
@@ -447,7 +566,7 @@ def get_tenant(tenant_id: str):
 
 
 @router.put("/ui/tenants/{tenant_id}")
-def update_tenant(tenant_id: str, payload: TenantCreateUpdate):
+def update_tenant(tenant_id: UuidStr, payload: TenantCreateUpdate):
     conn = None
     try:
         conn = get_db_connection()
@@ -471,7 +590,7 @@ def update_tenant(tenant_id: str, payload: TenantCreateUpdate):
 
 
 @router.delete("/ui/tenants/{tenant_id}")
-def delete_tenant(tenant_id: str):
+def delete_tenant(tenant_id: UuidStr):
     conn = None
     try:
         conn = get_db_connection()
@@ -596,7 +715,7 @@ def list_all_checkpoints(
 
 
 @router.get("/ui/checkpoints/{checkpoint_id}")
-def get_checkpoint(checkpoint_id: str):
+def get_checkpoint(checkpoint_id: UuidStr):
     conn = None
     try:
         conn = get_db_connection()
@@ -634,7 +753,7 @@ def get_checkpoint(checkpoint_id: str):
 
 
 @router.put("/ui/checkpoints/{checkpoint_id}")
-def update_checkpoint(checkpoint_id: str, payload: CheckpointCreateUpdate):
+def update_checkpoint(checkpoint_id: UuidStr, payload: CheckpointMetadataUpdate):
     conn = None
     try:
         conn = get_db_connection()
@@ -642,30 +761,11 @@ def update_checkpoint(checkpoint_id: str, payload: CheckpointCreateUpdate):
         cur.execute(
             """
             UPDATE checkpoints
-               SET tenant_id = %s,
-                   name = %s,
-                   description = %s,
-                   type = %s,
-                   dsl_expression = %s,
-                   method_of_call = %s,
-                   max_cost = %s,
-                   override_cost_flag = %s,
-                   timeout_seconds = %s,
+               SET description = %s,
                    updated_at = NOW()
              WHERE id = %s
             """,
-            (
-                payload.tenant_id,
-                payload.name,
-                payload.description,
-                payload.type,
-                payload.dsl_expression,
-                payload.method_of_call,
-                payload.max_cost,
-                payload.override_cost_flag,
-                payload.timeout_seconds,
-                checkpoint_id,
-            ),
+            (payload.description, checkpoint_id),
         )
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="Checkpoint not found.")
@@ -677,7 +777,7 @@ def update_checkpoint(checkpoint_id: str, payload: CheckpointCreateUpdate):
 
 
 @router.delete("/ui/checkpoints/{checkpoint_id}")
-def delete_checkpoint(checkpoint_id: str):
+def delete_checkpoint(checkpoint_id: UuidStr):
     conn = None
     try:
         conn = get_db_connection()
@@ -791,7 +891,7 @@ def list_all_signals(
 
 
 @router.get("/ui/signals/{signal_id}")
-def get_signal(signal_id: str):
+def get_signal(signal_id: UuidStr):
     conn = None
     try:
         conn = get_db_connection()
@@ -823,76 +923,31 @@ def get_signal(signal_id: str):
 
 
 @router.put("/ui/signals/{signal_id}")
-def update_signal(signal_id: str, payload: SignalCreateUpdate):
+def update_signal(signal_id: UuidStr, payload: SignalMetadataUpdate):
     conn = None
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("SELECT bearer_token FROM signals WHERE id = %s", (signal_id,))
-        existing = cur.fetchone()
-        if not existing:
-            raise HTTPException(status_code=404, detail="Signal not found.")
-        _validate_signal_templates(payload)
-        bearer_token = resolve_bearer_token_for_persist(existing[0], payload.bearer_token)
         cur.execute(
             """
             UPDATE signals
-               SET tenant_id = %s,
-                   name = %s,
-                   description = %s,
-                   type = %s,
-                   method_of_call = %s,
-                   expression_body = %s,
-                   cost = %s,
-                   cache_expiration_seconds = %s,
-                   timeout_seconds = %s,
-                   can_run_in_parallel = %s,
-                   order_of_evaluation = %s,
-                   http_method = %s,
-                   request_url_params_template = %s,
-                   request_body_template = %s,
-                   request_headers_template = %s,
-                   bearer_token = %s,
-                   allow_caching = %s,
-                   global_reuse = %s,
-                   function_params_template = %s,
+               SET description = %s,
                    updated_at = NOW()
              WHERE id = %s
             """,
-            (
-                payload.tenant_id,
-                payload.name,
-                payload.description,
-                payload.type,
-                payload.method_of_call,
-                payload.expression_body,
-                payload.cost,
-                payload.cache_expiration_seconds,
-                payload.timeout_seconds,
-                payload.can_run_in_parallel,
-                payload.order_of_evaluation,
-                payload.http_method,
-                payload.request_url_params_template,
-                payload.request_body_template,
-                payload.request_headers_template,
-                bearer_token,
-                payload.allow_caching,
-                payload.global_reuse,
-                payload.function_params_template,
-                signal_id,
-            ),
+            (payload.description, signal_id),
         )
         if cur.rowcount == 0:
             raise HTTPException(status_code=404, detail="Signal not found.")
         conn.commit()
-        return admin_mutation("updated", signal_id, **admin_signal_secret_fields(bearer_token))
+        return admin_mutation("updated", signal_id)
     finally:
         if conn:
             conn.close()
 
 
 @router.delete("/ui/signals/{signal_id}")
-def delete_signal(signal_id: str):
+def delete_signal(signal_id: UuidStr):
     conn = None
     try:
         conn = get_db_connection()
@@ -935,7 +990,7 @@ def create_variable_value(payload: VariableValueCreateUpdate):
 
 
 @router.get("/ui/variable_values/{variable_value_id}")
-def get_variable_value_item(variable_value_id: str):
+def get_variable_value_item(variable_value_id: UuidStr):
     conn = None
     try:
         conn = get_db_connection()
@@ -963,7 +1018,7 @@ def get_variable_value_item(variable_value_id: str):
 
 
 @router.put("/ui/variable_values/{variable_value_id}")
-def update_variable_value(variable_value_id: str, payload: VariableValueCreateUpdate):
+def update_variable_value(variable_value_id: UuidStr, payload: VariableValueCreateUpdate):
     conn = None
     try:
         conn = get_db_connection()
@@ -994,7 +1049,7 @@ def update_variable_value(variable_value_id: str, payload: VariableValueCreateUp
 
 
 @router.delete("/ui/variable_values/{variable_value_id}")
-def delete_variable_value(variable_value_id: str):
+def delete_variable_value(variable_value_id: UuidStr):
     conn = None
     try:
         conn = get_db_connection()
@@ -1037,7 +1092,7 @@ def create_checkpoint_signal(payload: CheckpointSignalCreateUpdate):
 
 
 @router.delete("/ui/checkpoint_signals/{checkpoint_signal_id}")
-def delete_checkpoint_signal(checkpoint_signal_id: str):
+def delete_checkpoint_signal(checkpoint_signal_id: UuidStr):
     conn = None
     try:
         conn = get_db_connection()
@@ -1556,7 +1611,7 @@ def _promotion_audit_row_to_item(row) -> dict:
 
 
 @router.get("/ui/promotion_audit/{promotion_id}")
-def get_promotion_audit(promotion_id: str, tenant_id: Optional[str] = None):
+def get_promotion_audit(promotion_id: UuidStr, tenant_id: Optional[str] = None):
     conn = None
     try:
         conn = get_db_connection()
@@ -1583,13 +1638,19 @@ def get_promotion_audit(promotion_id: str, tenant_id: Optional[str] = None):
 
 @router.post("/ui/dsl_preflight")
 def dsl_preflight(payload: DslPreflightRequest):
-    """Validate checkpoint DSL syntax before save or promotion."""
-    return preflight_dsl(payload.dsl_expression, payload.signal_names)
+    """Validate DSL syntax using the same policy as runtime evaluation."""
+    known_names = list(payload.signal_names) + list(payload.known_names)
+    return preflight_dsl(
+        payload.dsl_expression,
+        known_names,
+        binding_mode=payload.binding_mode,
+        expression_kind=payload.expression_kind,
+    )
 
 
 @router.post("/ui/checkpoints/{checkpoint_id}/make_current")
 def make_checkpoint_current(
-    checkpoint_id: str,
+    checkpoint_id: UuidStr,
     payload: PromotionRequest,
     auth: AuthContext = Depends(require_admin),
 ):
@@ -1600,7 +1661,7 @@ def make_checkpoint_current(
     try:
         # First get the checkpoint details
         cur.execute("""
-            SELECT tenant_id, name
+            SELECT tenant_id, name, dsl_expression
             FROM checkpoints
             WHERE id = %s
         """, (checkpoint_id,))
@@ -1608,7 +1669,21 @@ def make_checkpoint_current(
         if not result:
             raise HTTPException(status_code=404, detail="Checkpoint not found")
         
-        tenant_id, checkpoint_name = result
+        tenant_id, checkpoint_name, dsl_expression = result
+
+        cur.execute(
+            """
+            SELECT s.name
+              FROM checkpoint_signals cs
+              JOIN signals s ON s.id = cs.signal_id
+             WHERE cs.checkpoint_id = %s
+            """,
+            (checkpoint_id,),
+        )
+        signal_names = [row[0] for row in cur.fetchall()]
+        dsl_result = validate_expression(dsl_expression, signal_names, "strict")
+        if not dsl_result.ok:
+            raise HTTPException(status_code=422, detail="; ".join(dsl_result.errors))
 
         # Update or insert into checkpoint_current_version
         cur.execute("""
@@ -1642,7 +1717,7 @@ def make_checkpoint_current(
 
 @router.post("/ui/signals/{signal_id}/make_current")
 def make_signal_current(
-    signal_id: str,
+    signal_id: UuidStr,
     payload: PromotionRequest,
     auth: AuthContext = Depends(require_admin),
 ):

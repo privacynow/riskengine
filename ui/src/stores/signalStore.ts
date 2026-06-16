@@ -194,7 +194,7 @@ export const useSignalStore = defineStore("signal", {
       if (this.showCreateForm) this.draft = emptySignalDraft();
     },
 
-    draftToPayload(draft: SignalDraft, tenantId: string): Record<string, unknown> {
+    draftToPayload(draft: SignalDraft, tenantId: string, copyFromSignalId?: string): Record<string, unknown> {
       const payload: Record<string, unknown> = {
         tenant_id: tenantId,
         name: draft.name,
@@ -217,6 +217,7 @@ export const useSignalStore = defineStore("signal", {
       };
       const token = draft.bearer_token.trim();
       if (token) payload.bearer_token = token;
+      if (copyFromSignalId) payload.copyFromSignalId = copyFromSignalId;
       return payload;
     },
 
@@ -252,7 +253,7 @@ export const useSignalStore = defineStore("signal", {
       if (!signal) return;
       try {
         const created = await signalsApi.create(
-          this.draftToPayload(this.detailDraft, signal.tenant_id)
+          this.draftToPayload(this.detailDraft, signal.tenant_id, signal.id)
         );
         const newId = String((created as { id: string }).id);
         await this.loadAll(this.page);

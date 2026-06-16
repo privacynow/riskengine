@@ -1,8 +1,9 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .auth import TENANT_SUPPLIED_DETAIL
+from .types import parse_optional_uuid, parse_uuid
 
 
 class TenantSuppliedError(Exception):
@@ -48,7 +49,15 @@ class TenantCreateUpdate(BaseModel):
     copy_from_tenant_id: Optional[str] = Field(None, alias="copyFromTenantId")
 
 
-class CheckpointCreateUpdate(BaseModel):
+class CheckpointMetadataUpdate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    description: Optional[str] = None
+
+
+class CheckpointCreateRequest(BaseModel):
+    """Config fields for a new checkpoint version (POST only)."""
+
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     tenant_id: str
@@ -60,6 +69,31 @@ class CheckpointCreateUpdate(BaseModel):
     max_cost: int = 0
     override_cost_flag: bool = False
     timeout_seconds: int = 30
+    signal_ids: List[str] = Field(default_factory=list, alias="signals")
+    copy_from_checkpoint_id: Optional[str] = Field(None, alias="copyFromCheckpointId")
+
+    @field_validator("tenant_id", mode="before")
+    @classmethod
+    def _validate_tenant_id(cls, value: object) -> str:
+        return parse_uuid(value, field="tenant_id")
+
+    @field_validator("signal_ids", mode="before")
+    @classmethod
+    def _validate_signal_ids(cls, value: object) -> list[str]:
+        if value is None:
+            return []
+        return [parse_uuid(item, field="signal_id") for item in value]
+
+    @field_validator("copy_from_checkpoint_id", mode="before")
+    @classmethod
+    def _validate_copy_from_checkpoint_id(cls, value: object) -> Optional[str]:
+        return parse_optional_uuid(value, field="copyFromCheckpointId")
+
+
+class SignalMetadataUpdate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    description: Optional[str] = None
 
 
 class SignalCreateUpdate(BaseModel):
@@ -84,6 +118,17 @@ class SignalCreateUpdate(BaseModel):
     allow_caching: bool = False
     global_reuse: bool = False
     function_params_template: Optional[str] = None
+    copy_from_signal_id: Optional[str] = Field(None, alias="copyFromSignalId")
+
+    @field_validator("tenant_id", mode="before")
+    @classmethod
+    def _validate_tenant_id(cls, value: object) -> str:
+        return parse_uuid(value, field="tenant_id")
+
+    @field_validator("copy_from_signal_id", mode="before")
+    @classmethod
+    def _validate_copy_from_signal_id(cls, value: object) -> Optional[str]:
+        return parse_optional_uuid(value, field="copyFromSignalId")
 
 
 class VariableValueCreateUpdate(BaseModel):
@@ -91,10 +136,20 @@ class VariableValueCreateUpdate(BaseModel):
     name: str
     value: Optional[str] = None
 
+    @field_validator("signal_id", mode="before")
+    @classmethod
+    def _validate_signal_id(cls, value: object) -> str:
+        return parse_uuid(value, field="signal_id")
+
 
 class DslPreflightRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
     dsl_expression: str
     signal_names: List[str] = Field(default_factory=list)
+    known_names: List[str] = Field(default_factory=list)
+    binding_mode: Optional[Literal["strict", "warn_unknown", "syntax_only"]] = None
+    expression_kind: Literal["checkpoint", "signal_expression"] = "checkpoint"
 
 
 class PromotionRequest(BaseModel):
@@ -104,5 +159,13 @@ class PromotionRequest(BaseModel):
 
 
 class CheckpointSignalCreateUpdate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
     checkpoint_id: str
     signal_id: str
+
+    @field_validator("checkpoint_id", "signal_id", mode="before")
+    @classmethod
+    def _validate_ids(cls, value: object) -> str:
+        return parse_uuid(value, field="id")
+

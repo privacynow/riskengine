@@ -11,26 +11,50 @@ log_queue: asyncio.Queue = asyncio.Queue()
 def _process_audit_logging(log_item: Dict[str, Any]):
     with db_cursor() as (conn, cur):
         if log_item["type"] == "signal":
-            cur.execute(
-                """
-                INSERT INTO signal_log
-                (id, decision_log_id, signal_id, applicant_id,
-                 signal_value, started_at, completed_at,
-                 cost_incurred, success)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """,
-                (
-                    log_item["signal_log_id"],
-                    log_item["decision_log_id"],
-                    log_item["signal_id"],
-                    log_item["applicant_id"],
-                    log_item["signal_value"],
-                    log_item["started_at"],
-                    log_item["completed_at"],
-                    log_item["cost_incurred"],
-                    log_item["success"],
-                ),
-            )
+            error_message = log_item.get("error_message")
+            if error_message is not None:
+                cur.execute(
+                    """
+                    INSERT INTO signal_log
+                    (id, decision_log_id, signal_id, applicant_id,
+                     signal_value, started_at, completed_at,
+                     cost_incurred, success, error_message)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        log_item["signal_log_id"],
+                        log_item["decision_log_id"],
+                        log_item["signal_id"],
+                        log_item["applicant_id"],
+                        log_item["signal_value"],
+                        log_item["started_at"],
+                        log_item["completed_at"],
+                        log_item["cost_incurred"],
+                        log_item["success"],
+                        error_message,
+                    ),
+                )
+            else:
+                cur.execute(
+                    """
+                    INSERT INTO signal_log
+                    (id, decision_log_id, signal_id, applicant_id,
+                     signal_value, started_at, completed_at,
+                     cost_incurred, success)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        log_item["signal_log_id"],
+                        log_item["decision_log_id"],
+                        log_item["signal_id"],
+                        log_item["applicant_id"],
+                        log_item["signal_value"],
+                        log_item["started_at"],
+                        log_item["completed_at"],
+                        log_item["cost_incurred"],
+                        log_item["success"],
+                    ),
+                )
             for param_name, param_value in log_item.get("placeholder_values", {}).items():
                 cur.execute(
                     """

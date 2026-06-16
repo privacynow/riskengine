@@ -13,7 +13,7 @@ import re
 from typing import Any, Dict, Mapping, Optional
 from urllib.parse import urlparse
 
-from simpleeval import SimpleEval
+from .dsl import evaluate_expression
 
 BLOCKED_OUTBOUND_HOSTS = frozenset(
     {
@@ -155,11 +155,18 @@ def validate_outbound_signal_url(url: str) -> None:
         raise ValueError(f"Outbound URL host not allowed: {host}")
 
 
-def create_restricted_evaluator(names: Mapping[str, Any]) -> SimpleEval:
-    evaluator = SimpleEval()
-    evaluator.names = dict(names)
-    evaluator.functions = {}
-    return evaluator
+def create_restricted_evaluator(names: Mapping[str, Any]):
+    """Deprecated: use evaluate_expression from engine.services.dsl."""
+
+    class _Evaluator:
+        def eval(self, expression: str) -> Any:
+            return evaluate_expression(expression, names)
+
+    return _Evaluator()
+
+
+def eval_restricted_expression(expression: str, names: Mapping[str, Any]) -> Any:
+    return evaluate_expression(expression, names)
 
 
 def is_local_mock_client(host: Optional[str]) -> bool:

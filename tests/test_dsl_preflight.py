@@ -28,6 +28,19 @@ class TestDslPreflight:
         assert result["ok"] is False
         assert any("mystery_signal" in err for err in result["errors"])
 
+    def test_arithmetic_expression_passes(self):
+        result = preflight_dsl("a + b", signal_names=["a", "b"])
+        assert result["ok"] is True
+        assert result["errors"] == []
+
+    def test_signal_expression_unknown_warns(self):
+        result = preflight_dsl(
+            "request_score > 10",
+            expression_kind="signal_expression",
+        )
+        assert result["ok"] is True
+        assert any("request_score" in warn for warn in result["warnings"])
+
     def test_disallowed_call_fails(self):
         result = preflight_dsl("age_check()", signal_names=["age_check"])
         assert result["ok"] is False

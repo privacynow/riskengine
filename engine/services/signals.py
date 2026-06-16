@@ -6,7 +6,8 @@ from typing import Any, Dict, Optional
 import httpx
 
 from ..db import db_cursor
-from .security import create_restricted_evaluator, validate_outbound_signal_url
+from .dsl import evaluate_expression
+from .security import validate_outbound_signal_url
 from .templates import parse_headers_string, parse_params_string, render_template
 
 
@@ -133,6 +134,7 @@ async def invoke_signal(
     bearer_token: Optional[str],
     function_params_template: Optional[str],
     signal_id: str,
+    timeout_seconds: int = 30,
 ) -> Any:
     if signal_type in ("internal_endpoint", "external_endpoint"):
         final_method = (http_method or "GET").upper()
@@ -154,7 +156,7 @@ async def invoke_signal(
             except json.JSONDecodeError:
                 body_data = rendered_body
 
-        async with httpx.AsyncClient(timeout=5) as client:
+        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
             request_kwargs = {
                 "params": params_dict,
                 "headers": headers_dict,
@@ -205,8 +207,7 @@ async def invoke_signal(
         return local_function_map(method_of_call, params_obj)
 
     if signal_type == "expression":
-        evaluator = create_restricted_evaluator(invoke_context)
-        return evaluator.eval(expression_body or "")
+        return evaluate_expression(expression_body or "", invoke_context)
 
     if signal_type == "variable":
         var_name = method_of_call.strip() if method_of_call else None

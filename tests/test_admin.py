@@ -113,6 +113,145 @@ class TestAdminHygiene:
         )
         assert missing.status_code == 422
 
+    def test_create_checkpoint_with_associated_signals(self, client):
+        signals = client.get(
+            f"/ui/signals?tenant_id={SAMPLE_TENANT}&page=1&size=50",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        ).json()["items"]
+        age_check = next(item for item in signals if item["name"] == "age_check")
+        blocklist = next(item for item in signals if item["name"] == "blocklist_check")
+
+        created = client.post(
+            "/ui/checkpoints",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "tenant_id": SAMPLE_TENANT,
+                "name": "assoc-create-test",
+                "type": "onboarding",
+                "dsl_expression": "age_check and not blocklist_check",
+                "signals": [age_check["id"], blocklist["id"]],
+            },
+        )
+        assert created.status_code == 200
+        checkpoint_id = created.json()["id"]
+        assert created.json().get("association_count") == 2
+
+        linked = client.get(
+            f"/ui/signals?checkpoint_id={checkpoint_id}&page=1&size=50",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        ).json()["items"]
+        linked_names = {item["name"] for item in linked}
+        assert linked_names == {"age_check", "blocklist_check"}
+
+    def test_create_checkpoint_rejects_cross_tenant_signal(self, client):
+        foreign = client.post(
+            "/ui/signals",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "tenant_id": OTHER_TENANT,
+                "name": "foreign-only-signal",
+                "type": "expression",
+                "expression_body": "True",
+            },
+        )
+        assert foreign.status_code == 200
+        foreign_id = foreign.json()["id"]
+
+        resp = client.post(
+            "/ui/checkpoints",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "tenant_id": SAMPLE_TENANT,
+                "name": "cross-tenant-assoc-test",
+                "type": "onboarding",
+                "dsl_expression": "True",
+                "signals": [foreign_id],
+            },
+        )
+        assert resp.status_code == 422
+
+        missing = client.get(
+            f"/ui/search_checkpoints?q=cross-tenant-assoc-test&tenant_id={SAMPLE_TENANT}&page=1&size=5",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        ).json()["items"]
+        assert not any(item["name"] == "cross-tenant-assoc-test" for item in missing)
+
+    def test_create_signal_version_copies_associations(self, client):
+        source = client.get(
+            f"/ui/signals?tenant_id={SAMPLE_TENANT}&q=age_check&page=1&size=1",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        ).json()["items"][0]
+        source_id = source["id"]
+
+        created = client.post(
+            "/ui/signals",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "tenant_id": SAMPLE_TENANT,
+                "name": source["name"],
+                "description": "forked version",
+                "type": source["type"],
+                "method_of_call": source.get("method_of_call"),
+                "expression_body": source.get("expression_body") or "True",
+                "copyFromSignalId": source_id,
+            },
+        )
+        assert created.status_code == 200
+        new_id = created.json()["id"]
+        assert new_id != source_id
+
+        assoc = client.get(
+            f"/ui/checkpoint_signals?signal_id={new_id}&tenant_id={SAMPLE_TENANT}&size=50",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        ).json()["items"]
+        source_assoc = client.get(
+            f"/ui/checkpoint_signals?signal_id={source_id}&tenant_id={SAMPLE_TENANT}&size=50",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        ).json()["items"]
+        assert {row["checkpoint_id"] for row in assoc} == {
+            row["checkpoint_id"] for row in source_assoc
+        }
+
+    def test_create_checkpoint_rejects_invalid_signal_uuid(self, client):
+        resp = client.post(
+            "/ui/checkpoints",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "tenant_id": SAMPLE_TENANT,
+                "name": "invalid-signal-id",
+                "type": "onboarding",
+                "dsl_expression": "True",
+                "signals": ["not-a-uuid"],
+            },
+        )
+        assert resp.status_code == 422
+
+    def test_create_checkpoint_rejects_invalid_copy_from_uuid(self, client):
+        resp = client.post(
+            "/ui/checkpoints",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "tenant_id": SAMPLE_TENANT,
+                "name": "invalid-copy-from",
+                "type": "onboarding",
+                "dsl_expression": "True",
+                "copyFromCheckpointId": "not-a-uuid",
+            },
+        )
+        assert resp.status_code == 422
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/ui/promotion_audit/not-a-uuid",
+            "/ui/checkpoints/not-a-uuid",
+            "/ui/signals/not-a-uuid",
+        ],
+    )
+    def test_invalid_uuid_path_returns_422(self, client, path):
+        resp = client.get(path, headers=auth_header(TEST_ADMIN_TOKEN))
+        assert resp.status_code == 422
+
     def test_create_checkpoint_rejects_unknown_write_fields(self, client):
         resp = client.post(
             "/ui/checkpoints",

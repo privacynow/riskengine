@@ -52,4 +52,20 @@ Admin list and search endpoints accept optional `tenant_id` to restrict results 
 
 Omitting `tenant_id` on admin routes can return rows across tenants; the admin UI always passes `tenant_id` for tenant-bound screens.
 
+### ID validation
+
+Admin path parameters and UUID fields in write models (`tenant_id`, `signals`, `copyFromCheckpointId`, `copyFromSignalId`) must be valid UUIDs. Malformed IDs return **422** before database access.
+
+### Checkpoint create with associations
+
+`POST /ui/checkpoints` accepts optional `signals` (array of signal UUIDs) and `copyFromCheckpointId`. Associations are created in the same transaction as the new checkpoint row.
+
+### DSL preflight
+
+`POST /ui/dsl_preflight` accepts `dsl_expression`, `signal_names`, optional `known_names`, `expression_kind` (`checkpoint` | `signal_expression`), and optional `binding_mode`. Uses the same policy as runtime evaluation — see [DSL_GUIDE.md](DSL_GUIDE.md).
+
+### Promotion audit
+
+`GET /ui/promotion_audit` (search) and `GET /ui/promotion_audit/{id}` (detail) expose governed version promotions.
+
 Hand-maintained OpenAPI YAML was removed to avoid drift; use `/docs` on a running instance as the source of truth.

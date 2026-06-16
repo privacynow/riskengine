@@ -1,8 +1,7 @@
----------------------------------------
--- 9) Visual fixture tenant (stable Playwright screenshots)
----------------------------------------
+-- Test-only visual regression fixture. Apply via scripts/seed_visual_fixture.sh.
+
 INSERT INTO tenants (id, name)
-SELECT 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'VISUAL FIXTURE BANK'
+SELECT 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'HARBOR CREDIT TESTING'
 WHERE NOT EXISTS (
   SELECT 1 FROM tenants WHERE id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
 );
@@ -62,22 +61,18 @@ SELECT
   'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
   'Fixture Flow',
   'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
-WHERE NOT EXISTS (
-  SELECT 1 FROM checkpoint_current_version
-   WHERE tenant_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
-     AND name = 'Fixture Flow'
-);
+ON CONFLICT (tenant_id, name) DO UPDATE
+   SET checkpoint_id = EXCLUDED.checkpoint_id,
+       updated_at = NOW();
 
 INSERT INTO signal_current_version (tenant_id, name, signal_id)
 SELECT
   'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
   'fixture_signal',
   'cccccccc-cccc-cccc-cccc-cccccccccccc'
-WHERE NOT EXISTS (
-  SELECT 1 FROM signal_current_version
-   WHERE tenant_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
-     AND name = 'fixture_signal'
-);
+ON CONFLICT (tenant_id, name) DO UPDATE
+   SET signal_id = EXCLUDED.signal_id,
+       updated_at = NOW();
 
 INSERT INTO promotion_audit (
     id, tenant_id, resource_type, resource_id, resource_name,
@@ -90,7 +85,7 @@ SELECT
   'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
   'Fixture Flow',
   'visual-fixture',
-  'Visual fixture seeded promotion',
+  'Fixture promotion record',
   'seed',
   TIMESTAMP '2020-01-01 00:00:00'
 WHERE NOT EXISTS (

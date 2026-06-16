@@ -195,8 +195,8 @@ export const useCheckpointStore = defineStore("checkpoint", {
       if (this.showCreateForm) this.draft = emptyCheckpointDraft();
     },
 
-    draftToCreatePayload(draft: CheckpointDraft, tenantId: string): Record<string, unknown> {
-      return {
+    draftToCreatePayload(draft: CheckpointDraft, tenantId: string, copyFromCheckpointId?: string): Record<string, unknown> {
+      const payload: Record<string, unknown> = {
         tenant_id: tenantId,
         name: draft.name,
         description: draft.description,
@@ -208,19 +208,15 @@ export const useCheckpointStore = defineStore("checkpoint", {
         timeout_seconds: draft.timeout_seconds,
         signals: draft.associatedSignals.map((s) => s.id),
       };
+      if (copyFromCheckpointId) {
+        payload.copyFromCheckpointId = copyFromCheckpointId;
+      }
+      return payload;
     },
 
-    draftToUpdatePayload(draft: CheckpointDraft, tenantId: string): Record<string, unknown> {
+    draftToMetadataPayload(draft: CheckpointDraft): Record<string, unknown> {
       return {
-        tenant_id: tenantId,
-        name: draft.name,
         description: draft.description,
-        type: draft.type,
-        dsl_expression: draft.dsl_expression,
-        method_of_call: draft.method_of_call,
-        max_cost: draft.max_cost,
-        override_cost_flag: draft.override_cost_flag,
-        timeout_seconds: draft.timeout_seconds,
       };
     },
 
@@ -258,15 +254,9 @@ export const useCheckpointStore = defineStore("checkpoint", {
         }
       }
       try {
-        const created = await checkpointsApi.create(
+        await checkpointsApi.create(
           this.draftToCreatePayload(this.draft, tenantId)
         );
-        for (const sig of this.draft.associatedSignals) {
-          await associationsApi.create({
-            checkpoint_id: created.id,
-            signal_id: sig.id,
-          });
-        }
         this.draft = emptyCheckpointDraft();
         this.showCreateForm = false;
         await this.loadAll(this.page);
@@ -286,14 +276,31 @@ export const useCheckpointStore = defineStore("checkpoint", {
       }
     },
 
-    async saveDetail() {
+    async saveDetail(): Promise<string | undefined> {
       const cp = this.selectedCheckpoint;
       if (!cp) return;
       try {
-        await checkpointsApi.update(cp.id, this.draftToUpdatePayload(this.detailDraft, cp.tenant_id));
+        const created = await checkpointsApi.create(
+          this.draftToCreatePayload(this.detailDraft, cp.tenant_id, cp.id)
+        );
+        const newId = String((created as { id: string }).id);
         await this.loadAll(this.page);
-        this.selectCheckpoint(cp.id);
-        useUiStore().notify("Decision flow saved.");
+        await this.selectCheckpoint(newId);
+        useUiStore().notify("Flow version saved.");
+        return newId;
+      } catch (err) {
+        useAuthStore().handleApiError(err);
+      }
+    },
+
+    async saveMetadata(id: string) {
+      const edit = this.edits[id];
+      if (!edit) return;
+      try {
+        await checkpointsApi.update(id, this.draftToMetadataPayload(edit));
+        this.expanded[id] = false;
+        await this.loadAll(this.page);
+        useUiStore().notify("Description updated.");
       } catch (err) {
         useAuthStore().handleApiError(err);
       }
@@ -304,10 +311,14 @@ export const useCheckpointStore = defineStore("checkpoint", {
       const cp = this.items.find((c) => c.id === id);
       if (!edit || !cp) return;
       try {
-        await checkpointsApi.update(id, this.draftToUpdatePayload(edit, cp.tenant_id));
+        const created = await checkpointsApi.create(
+          this.draftToCreatePayload(edit, cp.tenant_id, id)
+        );
         this.expanded[id] = false;
         await this.loadAll(this.page);
-        useUiStore().notify("Checkpoint saved.");
+        const newId = String((created as { id: string }).id);
+        await this.selectCheckpoint(newId);
+        useUiStore().notify("Checkpoint version saved.");
       } catch (err) {
         useAuthStore().handleApiError(err);
       }

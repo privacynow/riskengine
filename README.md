@@ -31,9 +31,9 @@ Multi-tenant checkpoint evaluation: signals + DSL, audit logging, and a Vue admi
 
 **Cost limits:** When `override_cost_flag` is false, same-order signals run sequentially and cumulative cost is checked before each signal. When `override_cost_flag` is true, same-order signals may run concurrently without cost gating.
 
-**Not yet implemented:** Per-signal HTTP timeouts beyond a fixed 5s client default, `can_run_in_parallel` enforcement, immutable config writes on all admin paths.
+**Not yet implemented:** Full immutable audit for deactivate/reactivate flows; production identity beyond bearer tokens.
 
-See [Production readiness](#production-readiness) for deployment boundaries.
+Runtime policy fields (`timeout_seconds`, `can_run_in_parallel`, `override_cost_flag`) are enforced in `engine/services/decision.py`. DSL preflight and runtime share `engine/services/dsl.py`. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/DSL_GUIDE.md](docs/DSL_GUIDE.md).
 
 ---
 
@@ -179,7 +179,8 @@ docker compose exec -T -e RUN_INTEGRATION_TESTS=1 risk-engine pytest -q
 bash scripts/smoke_test.sh
 bash scripts/ui_smoke.sh
 
-# Playwright e2e (stack required; scrubbed env — same pattern as CI)
+# Playwright e2e (stack required; seed visual fixture first)
+bash scripts/seed_visual_fixture.sh
 source scripts/lib/read_env_var.sh
 ADMIN_TOKEN="$(read_env_var SMOKE_ADMIN_TOKEN .env.local)"
 cd ui

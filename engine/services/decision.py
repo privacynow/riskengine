@@ -1,4 +1,5 @@
 import asyncio
+import time
 import uuid
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -8,7 +9,7 @@ from ..audit import log_queue
 from ..cache import in_memory_signal_cache
 from ..config import logger
 from ..models import DecisionRequest, DecisionResponse
-from .security import create_restricted_evaluator
+from .dsl import evaluate_expression, extract_dsl_identifiers
 from .signals import coerce_signal_value, invoke_signal
 from .templates import extract_placeholders_from_text
 from .tenancy import (
@@ -58,6 +59,9 @@ async def execute_decision(
     dsl_expression = cp_row.dsl_expression
     max_cost = cp_row.max_cost
     override_cost_flag = cp_row.override_cost_flag
+    checkpoint_deadline = (
+        time.monotonic() + cp_row.timeout_seconds if cp_row.timeout_seconds > 0 else None
+    )
 
     decision_id = str(uuid.uuid4())
     cur.execute(
@@ -84,15 +88,64 @@ async def execute_decision(
     total_cost = 0
     signal_results: Dict[str, Any] = {}
     user_params = request.parameters or {}
+    checkpoint_timed_out = False
 
     signals_by_order: Dict[int, list] = defaultdict(list)
     for signal in signals:
         signals_by_order[signal.order_of_evaluation].append(signal)
 
+    def remaining_checkpoint_seconds() -> Optional[float]:
+        if checkpoint_deadline is None:
+            return None
+        return checkpoint_deadline - time.monotonic()
+
+    def checkpoint_time_exhausted() -> bool:
+        nonlocal checkpoint_timed_out
+        remaining = remaining_checkpoint_seconds()
+        if remaining is not None and remaining <= 0:
+            checkpoint_timed_out = True
+            return True
+        return False
+
+    def effective_signal_timeout(row: ExecutableSignalRow) -> float:
+        per_signal = max(1, row.timeout_seconds or 30)
+        remaining = remaining_checkpoint_seconds()
+        if remaining is None:
+            return per_signal
+        if remaining <= 0:
+            return 0.0
+        return min(per_signal, remaining)
+
+    async def log_skipped_signal(
+        row: ExecutableSignalRow,
+        *,
+        error_message: str,
+        partial_params: Dict[str, Any],
+    ) -> None:
+        now = datetime.utcnow()
+        await log_queue.put(
+            {
+                "type": "signal",
+                "signal_log_id": str(uuid.uuid4()),
+                "decision_log_id": decision_id,
+                "signal_id": row.id,
+                "applicant_id": request.applicant_id,
+                "signal_value": "False",
+                "started_at": now,
+                "completed_at": now,
+                "cost_incurred": 0,
+                "success": False,
+                "placeholder_values": partial_params,
+                "actor_id": actor_id,
+                "error_message": error_message,
+            }
+        )
+
     async def run_signal(row: ExecutableSignalRow):
         started = datetime.utcnow()
         success = True
         value = None
+        error_message: Optional[str] = None
 
         placeholders_list = set()
         for tmpl in [
@@ -102,12 +155,31 @@ async def execute_decision(
             row.function_params_template,
         ]:
             placeholders_list.update(extract_placeholders_from_text(tmpl or ""))
+        if row.type == "expression" and row.expression_body:
+            placeholders_list.update(extract_dsl_identifiers(row.expression_body))
 
         partial_params = {
             p: user_params[p] for p in sorted(placeholders_list) if p in user_params
         }
         context = dict(signal_results)
         context.update(partial_params)
+
+        if checkpoint_time_exhausted():
+            await log_skipped_signal(
+                row,
+                error_message="checkpoint_timeout",
+                partial_params=partial_params,
+            )
+            return row.name, False, 0
+
+        timeout = effective_signal_timeout(row)
+        if timeout <= 0:
+            await log_skipped_signal(
+                row,
+                error_message="checkpoint_timeout",
+                partial_params=partial_params,
+            )
+            return row.name, False, 0
 
         applicant_key = None if row.global_reuse else request.applicant_id
         if row.allow_caching:
@@ -155,23 +227,38 @@ async def execute_decision(
 
         if value is None:
             try:
-                value = await invoke_signal(
-                    signal_type=row.type,
-                    method_of_call=row.method_of_call or "",
-                    expression_body=row.expression_body,
-                    invoke_context=context,
-                    http_method=row.http_method,
-                    url_params_template=row.request_url_params_template,
-                    body_template=row.request_body_template,
-                    headers_template=row.request_headers_template,
-                    bearer_token=row.bearer_token,
-                    function_params_template=row.function_params_template,
-                    signal_id=row.id,
+                value = await asyncio.wait_for(
+                    invoke_signal(
+                        signal_type=row.type,
+                        method_of_call=row.method_of_call or "",
+                        expression_body=row.expression_body,
+                        invoke_context=context,
+                        http_method=row.http_method,
+                        url_params_template=row.request_url_params_template,
+                        body_template=row.request_body_template,
+                        headers_template=row.request_headers_template,
+                        bearer_token=row.bearer_token,
+                        function_params_template=row.function_params_template,
+                        signal_id=row.id,
+                        timeout_seconds=int(max(1, timeout)),
+                    ),
+                    timeout=timeout,
                 )
+            except asyncio.TimeoutError:
+                logger.error(
+                    "Signal %s timed out after %.2fs (checkpoint remaining %.2fs)",
+                    row.name,
+                    timeout,
+                    remaining_checkpoint_seconds() or -1,
+                )
+                success = False
+                value = False
+                error_message = "signal_timeout"
             except Exception as exc:
                 logger.error("Error invoking signal %s: %s", row.name, exc)
                 success = False
                 value = False
+                error_message = str(exc)
 
             if row.allow_caching and success:
                 in_memory_signal_cache.set(
@@ -236,11 +323,51 @@ async def execute_decision(
                 "success": success,
                 "placeholder_values": partial_params,
                 "actor_id": actor_id,
+                "error_message": error_message,
             }
         )
         return row.name, value, row.cost if success else 0
 
+    async def run_parallel_batch(batch: List[ExecutableSignalRow]):
+        nonlocal total_cost, checkpoint_timed_out
+        if checkpoint_time_exhausted():
+            for sig in batch:
+                if sig.name not in signal_results:
+                    signal_results[sig.name] = False
+            return
+
+        remaining = remaining_checkpoint_seconds()
+
+        async def _run_all():
+            nonlocal total_cost
+            results = await asyncio.gather(*(run_signal(sig) for sig in batch))
+            for name, val, cost in results:
+                signal_results[name] = coerce_signal_value(val)
+                total_cost += cost
+
+        try:
+            if remaining is not None:
+                await asyncio.wait_for(_run_all(), timeout=max(0.001, remaining))
+            else:
+                await _run_all()
+        except asyncio.TimeoutError:
+            checkpoint_timed_out = True
+            for sig in batch:
+                if sig.name not in signal_results:
+                    signal_results[sig.name] = False
+
+    async def run_serial(sig: ExecutableSignalRow):
+        nonlocal total_cost
+        name, val, cost = await run_signal(sig)
+        signal_results[name] = coerce_signal_value(val)
+        total_cost += cost
+
     for order_val in sorted(signals_by_order.keys()):
+        if checkpoint_time_exhausted():
+            for sig in signals_by_order[order_val]:
+                signal_results[sig.name] = False
+            continue
+
         group = signals_by_order[order_val]
         runnable, skipped = partition_signals_by_cost(
             group, total_cost, max_cost, override_cost_flag
@@ -248,23 +375,29 @@ async def execute_decision(
         for sig in skipped:
             signal_results[sig.name] = False
 
-        if override_cost_flag:
-            results = await asyncio.gather(*(run_signal(sig) for sig in runnable))
-            for name, val, cost in results:
-                signal_results[name] = coerce_signal_value(val)
-                total_cost += cost
-        else:
-            for sig in runnable:
-                name, val, cost = await run_signal(sig)
-                signal_results[name] = coerce_signal_value(val)
-                total_cost += cost
+        parallel_batch: List[ExecutableSignalRow] = []
+        for sig in runnable:
+            if checkpoint_time_exhausted():
+                signal_results[sig.name] = False
+                continue
+            if sig.can_run_in_parallel:
+                parallel_batch.append(sig)
+                continue
+            if parallel_batch:
+                await run_parallel_batch(parallel_batch)
+                parallel_batch = []
+            await run_serial(sig)
+        if parallel_batch:
+            await run_parallel_batch(parallel_batch)
 
-    try:
-        evaluator = create_restricted_evaluator(signal_results)
-        final_eval = evaluator.eval(dsl_expression)
-    except Exception as exc:
-        logger.error("Error evaluating DSL expression: %s", exc)
+    if checkpoint_time_exhausted():
         final_eval = False
+    else:
+        try:
+            final_eval = evaluate_expression(dsl_expression, signal_results)
+        except Exception as exc:
+            logger.error("Error evaluating DSL expression: %s", exc)
+            final_eval = False
 
     final_decision_val = str(final_eval)
     cur.execute(

@@ -6,55 +6,79 @@ Current design decisions for the Decision Engine service and admin console.
 
 Runtime clients authenticate with a bearer token bound to exactly one `tenant_id`. Callers cannot supply `tenant_id` or `tenant_name` in query strings or request bodies; doing so returns `403`. Admin tokens may omit tenant binding and select tenants explicitly in the UI.
 
-This enforces tenant isolation at the API boundary: one runtime token maps to one tenant, with no caller-controlled scope escalation.
-
 ## Current-version tables
 
 Checkpoints and signals are versioned rows. `checkpoint_current_version` and `signal_current_version` point at the active row per `(tenant_id, name)`.
 
-Runtime execution resolves signals linked on a checkpoint by **name**, not by stale row IDs. Admin workflows can add new signal versions without rewriting every association immediately. Tenant copy preserves associations the same way.
+Runtime execution resolves signals linked on a checkpoint by **name**, not by stale row IDs.
 
-Promotion to current version is explicit: `POST /ui/checkpoints/{id}/make_current` and `POST /ui/signals/{id}/make_current` require a `promotionReason`, update the current-version pointer, and append a row to `promotion_audit`.
+Promotion is explicit and audited: `POST /ui/checkpoints/{id}/make_current` and `POST /ui/signals/{id}/make_current` require `promotionReason`, validate checkpoint DSL where applicable, update the current-version pointer, and append `promotion_audit`.
 
-## Connector secrets
+## DSL contract
 
-Outbound HTTP auth belongs in the signal `bearer_token` column only — not in header/body/url templates. Writes reject embedded credentials and sensitive `%placeholder%` names.
+All checkpoint DSL and signal expression evaluation goes through `engine/services/dsl.py`:
 
-API reads redact templates and historical param values. Copied tenants get `NULL` bearer tokens; operators re-enter integration secrets per tenant.
+- `validate_expression()` — preflight (AST allowlist + identifier binding)
+- `evaluate_expression()` — runtime (same allowlist, then SimpleEval)
 
-Secrets are stored in Postgres. Production deployments should use a secret manager and encryption at rest.
-
-## Outbound URL policy
-
-Signal URLs are checked for scheme, obvious private IP literals, and known metadata hostnames. DNS is not resolved; internal hostnames are not blocked. Treat this as a baseline guardrail, not full SSRF protection.
+Preflight and runtime reject the same constructs. See [DSL_GUIDE.md](DSL_GUIDE.md).
 
 ## Decision evaluation
 
-`POST /decisions` loads the current checkpoint, runs linked signals in `order_of_evaluation` order, then evaluates the checkpoint `dsl_expression` with SimpleEval. Results are written to `decision_log` and `signal_log`.
+`POST /decisions` (and admin `POST /ui/test_decisions`):
 
-Cost limits apply when `override_cost_flag` is false: same-order signals run sequentially with cumulative cost checks. When `override_cost_flag` is true, same-order signals may run concurrently without cost gating.
+1. Loads the checkpoint (current or explicit draft ID in Test Lab)
+2. Inserts `decision_log` as `PENDING`
+3. Runs linked signals grouped by `order_of_evaluation`
 
-## Admin UI
+### Signal scheduling
 
-Source: `ui/src/`. Production bundles: `ui/dist/`, served at `/admin/` by `engine/main.py`.
+Within each order group:
 
-| Topic | Behavior |
-|-------|----------|
-| Login | Admin bearer token from environment; stored in `sessionStorage` (`decisionEngineAdminToken`) |
-| API | All mutations and reads via `/ui/*` with `Authorization: Bearer` |
-| Test decisions | `POST /ui/test_decisions` — runtime tokens are not sent to the browser |
-| Active tenant | Operator selects a tenant; ID appears in the URL as `?tenant=<uuid>` |
-| Scoped fetches | Pinia stores pass `tenant_id` on list/search; no cross-tenant rows in the client |
-| Navigation | `routeWithTenant()` preserves `?tenant=` on sidebar and in-app links |
-| Deep links | `/admin/<route>?tenant=<uuid>` survives auth bootstrap and loads route data |
-| Static assets | SPA fallback for extensionless paths only; missing `.js`/`.css` return `404` |
+- Signals with `can_run_in_parallel=true` may run concurrently
+- Other signals run serially
+- `override_cost_flag` controls **cost gating only** (allow over-budget execution), not parallelism
 
-Stack: Vue 3, TypeScript, Vite, Pinia, Vue Router. Frontend developer guide: [ui/README.md](../ui/README.md).
+### Timeouts
 
-Do not expose the admin UI to the public internet without real identity, TLS, and network controls.
+- `signal.timeout_seconds` caps each signal invocation (`asyncio.wait_for` + HTTP client timeout)
+- `checkpoint.timeout_seconds` is a **decision deadline** from the start of execution
+- Each signal uses `min(signal.timeout_seconds, remaining_checkpoint_seconds)`
+- Parallel batches are wrapped in a checkpoint deadline `wait_for`
+- Expired signals log `checkpoint_timeout` or `signal_timeout` in `signal_log.error_message` when present
+
+### Expression signal context
+
+Expression signals receive prior signal results plus request `parameters` whose names appear as DSL identifiers in `expression_body` (and template placeholders for HTTP/function signals).
+
+4. Evaluates checkpoint `dsl_expression`
+5. Updates `decision_log` (never left `PENDING` after orchestration completes)
 
 ## Configuration writes
 
-Checkpoint and signal rows are versioned. Some admin update paths still mutate rows in place; new versions are created on fork/copy flows. Save-time promotion is not supported — use explicit promote endpoints with a reason.
+| Resource | New version | Metadata update |
+|----------|-------------|-----------------|
+| Checkpoint | `POST /ui/checkpoints` (optional `signals`, `copyFromCheckpointId`) | `PUT /ui/checkpoints/{id}` — description only |
+| Signal | `POST /ui/signals` (optional `copyFromSignalId` copies variable values + checkpoint associations) | `PUT /ui/signals/{id}` — description only |
 
-For DSL authoring behavior and preflight, see [DSL_GUIDE.md](DSL_GUIDE.md). For API shapes and auth, see [API.md](API.md).
+Save-time promotion is not supported.
+
+## Admin API validation
+
+Path and write-model IDs are validated as UUIDs. Invalid IDs return **422** before database access.
+
+## Connector secrets
+
+Outbound HTTP auth belongs in `signals.bearer_token` only. API reads redact templates and param values. Copied tenants get `NULL` bearer tokens.
+
+## Outbound URL policy
+
+Scheme check, obvious private IP literals, and known metadata hostnames. Not full SSRF protection.
+
+## Admin UI
+
+Source: `ui/src/`. Served at `/admin/`. Active tenant in `?tenant=<uuid>`. Frontend guide: [ui/README.md](../ui/README.md).
+
+## Test fixtures
+
+Visual regression data lives in `tests/fixtures/visual_fixture.sql` and is applied with `scripts/seed_visual_fixture.sh` — not during application startup.

@@ -18,7 +18,7 @@
       </div>
     </FormSection>
 
-    <FormSection title="Decision DSL" subtitle="Preflight validates syntax against associated signal names">
+    <FormSection title="Decision DSL" subtitle="Preflight uses the same DSL policy as runtime and checks linked signal names">
       <div class="form-field">
         <label>DSL expression</label>
         <textarea v-model="local.dsl_expression" class="code-input" rows="4" />
@@ -47,7 +47,7 @@
       <div class="form-field checkbox-field">
         <label>
           <input v-model="local.override_cost_flag" type="checkbox" />
-          Override cost limit on failure
+          Allow over-budget execution
         </label>
       </div>
     </FormSection>
@@ -70,8 +70,8 @@
     <FormSection title="Versioning & promotion" subtitle="Promotion requires an audited reason">
       <div class="rule-authoring-panel">
         <p class="field-hint">
-          Saves create or update draft versions only. Promote from the flow list when ready —
-          promotion is enforced server-side with a required reason and audit record.
+          Saving creates a new flow version. Promote from the flow list with a required reason —
+          promotion is enforced server-side and recorded in the audit log.
         </p>
         <dl v-if="!createNew" class="detail-list detail-list--compact">
           <div><dt>Checkpoint ID</dt><dd class="text-mono">{{ local.id || "—" }}</dd></div>
