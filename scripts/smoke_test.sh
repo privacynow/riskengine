@@ -47,6 +47,7 @@ status="$(curl -s -o /dev/null -w "%{http_code}" \
 echo "-> GET /admin/"
 admin_body="$(curl -sf "${BASE_URL}/admin/")"
 [[ "${admin_body}" == *"Decision Engine Admin"* ]]
+[[ "${admin_body}" == *"assets/index-"* ]]
 
 echo "-> POST /decisions without auth returns 401"
 status="$(curl -s -o /dev/null -w "%{http_code}" -X POST "${BASE_URL}/decisions" \

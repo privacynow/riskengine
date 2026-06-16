@@ -1,5 +1,6 @@
 import asyncio
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.openapi.utils import get_openapi
@@ -88,4 +89,10 @@ async def mock_service(mock_name: str, request: Request):
 
 app.include_router(runtime.router)
 app.include_router(admin.router)
-app.mount("/admin", StaticFiles(directory="ui", html=True), name="admin")
+
+UI_DIST = Path(__file__).resolve().parent / "ui" / "dist"
+if not UI_DIST.is_dir():
+    raise RuntimeError(
+        f"Admin UI build missing at {UI_DIST}. Run: cd ui && npm install && npm run build"
+    )
+app.mount("/admin", StaticFiles(directory=str(UI_DIST), html=True), name="admin")

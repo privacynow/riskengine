@@ -1,0 +1,470 @@
+/**
+ * Decision Engine Admin — form controls, toolbars, pagination, panels
+ */
+
+/* ── Base form controls ── */
+
+input[type="text"],
+input[type="number"],
+input[type="password"],
+input[type="email"],
+input[type="search"],
+input[type="url"],
+select,
+textarea,
+.form-control {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    background var(--transition-fast);
+}
+
+input[type="text"],
+input[type="number"],
+input[type="password"],
+input[type="email"],
+input[type="search"],
+input[type="url"],
+select,
+.form-control:not(textarea) {
+  height: 36px;
+}
+
+textarea,
+textarea.form-control {
+  min-height: 88px;
+  height: auto;
+  resize: vertical;
+  line-height: var(--leading-relaxed);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-text-disabled);
+}
+
+input:hover,
+select:hover,
+textarea:hover,
+.form-control:hover {
+  border-color: var(--color-text-disabled);
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+.form-control:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-muted);
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled,
+.form-control:disabled {
+  background: var(--color-surface-sunken);
+  color: var(--color-text-disabled);
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+input[readonly],
+textarea[readonly] {
+  background: var(--color-surface-sunken);
+  color: var(--color-text-secondary);
+}
+
+select {
+  appearance: none;
+  padding-right: var(--space-6);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath d='M3 4.5L6 7.5L9 4.5' stroke='%2371717a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--space-3) center;
+  cursor: pointer;
+}
+
+select[multiple] {
+  height: auto;
+  min-height: 120px;
+  padding-right: var(--space-3);
+  background-image: none;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--color-primary);
+  cursor: pointer;
+}
+
+label {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--color-text-secondary);
+}
+
+/* Checkbox / radio inline groups */
+.form-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.form-check label {
+  margin-bottom: 0;
+  font-weight: var(--font-normal);
+  cursor: pointer;
+}
+
+/* ── Input groups ── */
+
+.input-group {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  width: 100%;
+  max-width: 100%;
+}
+
+.input-group input,
+.input-group select,
+.input-group .form-control {
+  flex: 1;
+  min-width: 0;
+  border-radius: 0;
+}
+
+.input-group > :first-child {
+  border-top-left-radius: var(--radius-md);
+  border-bottom-left-radius: var(--radius-md);
+}
+
+.input-group > :last-child {
+  border-top-right-radius: var(--radius-md);
+  border-bottom-right-radius: var(--radius-md);
+}
+
+.input-group .btn {
+  flex-shrink: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+/* ── Toolbar (inline form actions) ── */
+
+.toolbar,
+.form-inline,
+.search-container {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  max-width: 100%;
+  margin-bottom: var(--space-4);
+}
+
+.toolbar-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.toolbar-spacer {
+  flex: 1;
+  min-width: var(--space-4);
+}
+
+.toolbar-grow {
+  flex: 1 1 12rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.toolbar-select {
+  min-width: 8rem;
+  max-width: 100%;
+}
+
+.toolbar .form-control,
+.toolbar input[type="text"],
+.toolbar input[type="search"],
+.toolbar select,
+.form-inline input[type="text"],
+.form-inline select,
+.search-container input[type="text"],
+.search-container select {
+  flex: 1 1 160px;
+  min-width: 0;
+  width: auto;
+}
+
+.toolbar .btn,
+.form-inline .btn,
+.search-container .btn {
+  flex-shrink: 0;
+  height: 36px;
+}
+
+.toolbar-label {
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+/* ── Pagination ── */
+
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.pagination button,
+.pagination .btn {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 var(--space-2);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.pagination button:hover:not(:disabled),
+.pagination .btn:hover:not(:disabled) {
+  background: var(--color-primary-subtle);
+  border-color: var(--color-primary-border);
+  color: var(--color-primary);
+}
+
+.pagination button:disabled,
+.pagination .btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pagination button.active,
+.pagination .btn.active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: var(--color-text-inverse);
+}
+
+.pagination-info,
+.pagination span {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  padding: 0 var(--space-1);
+}
+
+/* ── Expandable panels ── */
+
+.expandable-panel {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-raised);
+  overflow: hidden;
+}
+
+.expandable-panel + .expandable-panel {
+  margin-top: var(--space-3);
+}
+
+.expandable-panel-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: none;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.expandable-panel-trigger:hover {
+  background: var(--color-surface-hover);
+}
+
+.expandable-panel-trigger[aria-expanded="true"] {
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.expandable-panel-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--color-text-muted);
+  transition: transform var(--transition-base);
+}
+
+.expandable-panel-trigger[aria-expanded="true"] .expandable-panel-icon {
+  transform: rotate(90deg);
+}
+
+.expandable-panel-body {
+  padding: var(--space-4);
+}
+
+.expandable-panel-body[hidden] {
+  display: none;
+}
+
+/* Legacy expandable row as panel */
+.expandable-row {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin-bottom: var(--space-3);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.expandable-row .form-field {
+  margin-bottom: var(--space-3);
+}
+
+.expandable-row input[type="text"],
+.expandable-row textarea,
+.expandable-row select {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* ── Form containers ── */
+
+.checkpoint-form,
+.signal-form {
+  padding: var(--space-4);
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+}
+
+.checkpoint-form .form-field,
+.signal-form .form-field {
+  margin-bottom: var(--space-4);
+}
+
+.signals-section {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border-subtle);
+}
+
+.existing-details {
+  padding: var(--space-4);
+  margin: var(--space-4) 0;
+  background: var(--color-surface-sunken);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+
+.signal-list {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-2) 0;
+}
+
+.signal-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-1);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+
+/* ── Mobile form adjustments ── */
+
+@media (max-width: 768px) {
+  .toolbar,
+  .form-inline,
+  .search-container {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .toolbar-group {
+    width: 100%;
+  }
+
+  .toolbar .form-control,
+  .toolbar input[type="text"],
+  .toolbar select,
+  .form-inline input[type="text"],
+  .form-inline select,
+  .search-container input[type="text"] {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+
+  .toolbar .btn,
+  .form-inline .btn,
+  .search-container .btn {
+    width: 100%;
+  }
+
+  .toolbar-spacer {
+    display: none;
+  }
+
+  .pagination {
+    justify-content: center;
+  }
+
+  .expandable-row {
+    padding: var(--space-3);
+  }
+
+  .expandable-panel-body {
+    padding: var(--space-3);
+  }
+}

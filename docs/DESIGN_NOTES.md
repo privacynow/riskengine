@@ -28,7 +28,7 @@ Signal URLs are checked for scheme, obvious private IP literals, and known metad
 
 ## Admin UI
 
-The Vue 2 admin shell is a local demo surface. It stores the admin bearer token in `sessionStorage`, calls `/ui/*` routes, and runs test decisions through `POST /ui/test_decisions` so runtime tokens never reach the browser.
+The Vue 3 + Vite admin console is a local demo surface. Source lives under `ui/src/`; production bundles are compiled to `ui/dist/` and served as static files. It stores the admin bearer token in `sessionStorage`, calls `/ui/*` routes, and runs test decisions through `POST /ui/test_decisions` so runtime tokens never reach the browser.
 
 Do not expose the admin UI to the public internet without real identity, TLS, and network controls.
 

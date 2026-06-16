@@ -35,5 +35,8 @@ jobs:
       - name: Smoke test
         run: bash scripts/smoke_test.sh
 
+      - name: UI smoke test
+        run: bash scripts/ui_smoke.sh
+
       - name: Whitespace check
         run: git diff --check

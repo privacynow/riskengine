@@ -21,7 +21,7 @@ Baseline: `800cd54` + showcase hygiene work in progress. Severity: P0 publish bl
 | P2-SSRF-CLAIMS | P2 | Docs | Outbound URL policy oversold | Closed | README `800cd54` |
 | P2-UI-HTTP-TYPE | P2 | UI | UI uses `http` type; backend uses endpoint types | Closed | this branch |
 | P2-UI-DUP-MODAL | P2 | UI | Duplicate checkpoint confirmation modal | Closed | this branch |
-| P2-UI-MONOLITH | P2 | UI | Monolithic app.js / index.html | Open | deferred split |
+| P2-UI-MONOLITH | P2 | UI | Monolithic app.js / index.html | Closed | Vue 3 + Vite split |
 | P2-UI-ALERTS | P2 | UI | Scattered alert() error handling | Closed | this branch |
 | P2-ADMIN-CONTRACT | P2 | API | Mixed admin mutation response shapes | Open | deferred |
 | P3-ROADMAP-VOICE | P3 | Docs | Milestone/chat wording in ROADMAP | Closed | this branch |

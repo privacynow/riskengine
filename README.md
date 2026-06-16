@@ -86,7 +86,7 @@ See [api/README.md](api/README.md) for token JSON shape.
 
 ## UI and Admin API
 
-Vue 2 SPA at **`/admin/`** (vendored assets under `ui/vendor/`). The UI is a **local demo shell**: it prompts for an admin bearer token from your generated `.env.local` (stored in `sessionStorage` only). Admin JSON API under **`/ui/...`**.
+Vue 3 + Vite compiled admin UI at **`/admin/`** (static assets from `ui/dist/`, built in Docker or via `cd ui && npm ci && npm run build`). The UI is a **local demo shell**: it prompts for an admin bearer token from your generated `.env.local` (stored in `sessionStorage` only). Admin JSON API under **`/ui/...`**.
 
 ---
 
