@@ -261,8 +261,10 @@ async function prepareAuditPromotionsView(page: Page) {
   await navigateSidebar(page, "Audit");
   await page.waitForSelector(".audit-search-view", { timeout: 10000 });
   await page.locator(".audit-search-view select.toolbar-select").selectOption("promotions");
+  await page.locator(".audit-search-view input[type='search'].toolbar-grow").fill("Fixture Flow");
   await page.getByRole("button", { name: "Search" }).click();
   await page.waitForSelector(".audit-search-view .list-row", { timeout: 15000 });
+  await expect(page.locator(".audit-search-view .list-row")).toHaveCount(1);
 }
 
 async function prepareTestLabView(page: Page) {
@@ -317,7 +319,9 @@ test.describe("visual review — operate workbenches", () => {
     await assertMobileListRowArrowsHidden(page, ".audit-search-view");
     await assertTopBarFits(page);
     await assertNoHorizontalOverflow(page);
-    await expect(page.locator(".audit-search-view")).toHaveScreenshot("audit-mobile-390.png");
+    const listCard = page.locator(".audit-search-view .workbench-list-card");
+    await expect(listCard).toBeVisible();
+    await expect(listCard).toHaveScreenshot("audit-mobile-390.png");
   });
 
   test("test lab desktop", async ({ page }) => {

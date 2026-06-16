@@ -78,17 +78,25 @@ INSERT INTO promotion_audit (
     id, tenant_id, resource_type, resource_id, resource_name,
     actor_id, promotion_reason, action, source, created_at
 )
-SELECT
+VALUES (
   'dddddddd-dddd-dddd-dddd-dddddddddddd',
   'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
   'checkpoint',
   'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
   'Fixture Flow',
-  'visual-fixture',
-  'Fixture promotion record',
+  'fixture',
+  'Seed promote',
   'promote',
   'seed',
   TIMESTAMP '2020-01-01 00:00:00'
-WHERE NOT EXISTS (
-  SELECT 1 FROM promotion_audit WHERE id = 'dddddddd-dddd-dddd-dddd-dddddddddddd'
-);
+)
+ON CONFLICT (id) DO UPDATE
+   SET tenant_id = EXCLUDED.tenant_id,
+       resource_type = EXCLUDED.resource_type,
+       resource_id = EXCLUDED.resource_id,
+       resource_name = EXCLUDED.resource_name,
+       actor_id = EXCLUDED.actor_id,
+       promotion_reason = EXCLUDED.promotion_reason,
+       action = EXCLUDED.action,
+       source = EXCLUDED.source,
+       created_at = EXCLUDED.created_at;
