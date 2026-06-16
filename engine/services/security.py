@@ -156,7 +156,7 @@ def validate_outbound_signal_url(url: str) -> None:
 
 
 def create_restricted_evaluator(names: Mapping[str, Any]):
-    """Deprecated: use evaluate_expression from engine.services.dsl."""
+    """Deprecated: use create_dsl_evaluator from engine.services.dsl."""
 
     class _Evaluator:
         def eval(self, expression: str) -> Any:

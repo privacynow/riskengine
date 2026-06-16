@@ -10,18 +10,19 @@ Runtime clients authenticate with a bearer token bound to exactly one `tenant_id
 
 Checkpoints and signals are versioned rows. `checkpoint_current_version` and `signal_current_version` point at the active row per `(tenant_id, name)`.
 
-Runtime execution resolves signals linked on a checkpoint by **name**, not by stale row IDs.
+Runtime resolves linked signals by logical **name** through `signal_current_version`. Execution SQL deduplicates to one current row per signal name even if legacy association rows exist for multiple versions.
 
 Promotion is explicit and audited: `POST /ui/checkpoints/{id}/make_current` and `POST /ui/signals/{id}/make_current` require `promotionReason`, validate checkpoint DSL where applicable, update the current-version pointer, and append `promotion_audit`.
 
 ## DSL contract
 
-All checkpoint DSL and signal expression evaluation goes through `engine/services/dsl.py`:
+All checkpoint DSL and signal expression evaluation uses `engine/services/dsl.py`:
 
-- `validate_expression()` — preflight (AST allowlist + identifier binding)
-- `evaluate_expression()` — runtime (same allowlist, then SimpleEval)
+- `create_dsl_evaluator(names)` — configured `SimpleEval(functions={}, names=names)`
+- `evaluate_expression()` — direct SimpleEval evaluation (no custom operator gate)
+- `validate_expression()` — AST syntax + identifier binding + SimpleEval probe evaluation
 
-Preflight and runtime reject the same constructs. See [DSL_GUIDE.md](DSL_GUIDE.md).
+SimpleEval is the language authority. See [DSL_GUIDE.md](DSL_GUIDE.md).
 
 ## Decision evaluation
 
@@ -59,7 +60,7 @@ Expression signals receive prior signal results plus request `parameters` whose 
 | Resource | New version | Metadata update |
 |----------|-------------|-----------------|
 | Checkpoint | `POST /ui/checkpoints` (optional `signals`, `copyFromCheckpointId`) | `PUT /ui/checkpoints/{id}` — description only |
-| Signal | `POST /ui/signals` (optional `copyFromSignalId` copies variable values + checkpoint associations) | `PUT /ui/signals/{id}` — description only |
+| Signal | `POST /ui/signals` (optional `copyFromSignalId` copies variable values only) | `PUT /ui/signals/{id}` — description only |
 
 Save-time promotion is not supported.
 

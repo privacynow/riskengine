@@ -152,7 +152,8 @@ class SignalDetailRow(ExecutableSignalRow):
 
 
 CHECKPOINT_SIGNAL_EXECUTION_SQL = """
-    SELECT s_exec.id, s_exec.name, s_exec.type, s_exec.method_of_call, s_exec.expression_body,
+    SELECT DISTINCT ON (s.name)
+           s_exec.id, s_exec.name, s_exec.type, s_exec.method_of_call, s_exec.expression_body,
            s_exec.cost, s_exec.cache_expiration_seconds, s_exec.timeout_seconds,
            s_exec.can_run_in_parallel, s_exec.order_of_evaluation,
            s_exec.http_method, s_exec.request_url_params_template,
@@ -167,11 +168,12 @@ CHECKPOINT_SIGNAL_EXECUTION_SQL = """
         ON s_exec.id = scv.signal_id
        AND s_exec.tenant_id = %s
      WHERE cs.checkpoint_id = %s
-     ORDER BY s_exec.order_of_evaluation, s_exec.name
+     ORDER BY s.name, s_exec.order_of_evaluation, s_exec.id
 """
 
 CHECKPOINT_SIGNAL_DETAILS_SQL = """
-    SELECT s_exec.id, s_exec.tenant_id, s_exec.name, s_exec.description, s_exec.type,
+    SELECT DISTINCT ON (s.name)
+           s_exec.id, s_exec.tenant_id, s_exec.name, s_exec.description, s_exec.type,
            s_exec.method_of_call, s_exec.expression_body, s_exec.cost,
            s_exec.cache_expiration_seconds, s_exec.timeout_seconds,
            s_exec.can_run_in_parallel, s_exec.order_of_evaluation,
@@ -187,7 +189,7 @@ CHECKPOINT_SIGNAL_DETAILS_SQL = """
         ON s_exec.id = scv.signal_id
        AND s_exec.tenant_id = %s
      WHERE cs.checkpoint_id = %s
-     ORDER BY s_exec.order_of_evaluation, s_exec.name
+     ORDER BY s.name, s_exec.order_of_evaluation, s_exec.id
 """
 
 

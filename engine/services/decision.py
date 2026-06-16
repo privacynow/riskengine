@@ -141,6 +141,27 @@ async def execute_decision(
             }
         )
 
+    async def record_skipped_signal(row: ExecutableSignalRow, error_message: str) -> None:
+        now = datetime.utcnow()
+        signal_results[row.name] = False
+        await log_queue.put(
+            {
+                "type": "signal",
+                "signal_log_id": str(uuid.uuid4()),
+                "decision_log_id": decision_id,
+                "signal_id": row.id,
+                "applicant_id": request.applicant_id,
+                "signal_value": "False",
+                "started_at": now,
+                "completed_at": now,
+                "cost_incurred": 0,
+                "success": False,
+                "placeholder_values": {},
+                "actor_id": actor_id,
+                "error_message": error_message,
+            }
+        )
+
     async def run_signal(row: ExecutableSignalRow):
         started = datetime.utcnow()
         success = True
@@ -333,7 +354,7 @@ async def execute_decision(
         if checkpoint_time_exhausted():
             for sig in batch:
                 if sig.name not in signal_results:
-                    signal_results[sig.name] = False
+                    await record_skipped_signal(sig, "checkpoint_timeout")
             return
 
         remaining = remaining_checkpoint_seconds()
@@ -354,7 +375,7 @@ async def execute_decision(
             checkpoint_timed_out = True
             for sig in batch:
                 if sig.name not in signal_results:
-                    signal_results[sig.name] = False
+                    await record_skipped_signal(sig, "checkpoint_timeout")
 
     async def run_serial(sig: ExecutableSignalRow):
         nonlocal total_cost
@@ -365,7 +386,8 @@ async def execute_decision(
     for order_val in sorted(signals_by_order.keys()):
         if checkpoint_time_exhausted():
             for sig in signals_by_order[order_val]:
-                signal_results[sig.name] = False
+                if sig.name not in signal_results:
+                    await record_skipped_signal(sig, "checkpoint_timeout")
             continue
 
         group = signals_by_order[order_val]
@@ -373,12 +395,12 @@ async def execute_decision(
             group, total_cost, max_cost, override_cost_flag
         )
         for sig in skipped:
-            signal_results[sig.name] = False
+            await record_skipped_signal(sig, "cost_budget_exceeded")
 
         parallel_batch: List[ExecutableSignalRow] = []
         for sig in runnable:
             if checkpoint_time_exhausted():
-                signal_results[sig.name] = False
+                await record_skipped_signal(sig, "checkpoint_timeout")
                 continue
             if sig.can_run_in_parallel:
                 parallel_batch.append(sig)

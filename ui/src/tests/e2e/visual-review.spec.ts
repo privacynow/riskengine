@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { authenticate, assertNoHorizontalOverflow, firstTenantId, navigateSidebar, selectTenant, selectVisualFixtureTenant } from "./helpers";
+import { authenticate, assertNoHorizontalOverflow, navigateSidebar, selectVisualFixtureTenant } from "./helpers";
 
 async function neutralizePointer(page: Page) {
   await page.mouse.move(0, 0);
@@ -131,7 +131,7 @@ async function prepareFlowsView(page: Page) {
   await navigateSidebar(page, "Decision Flows");
   await page.waitForSelector(".checkpoints-view", { timeout: 10000 });
   await page.locator(".checkpoints-view select.toolbar-select").selectOption("active");
-  await page.locator(".checkpoints-view input[type='search'].toolbar-grow").fill("Onboarding");
+  await page.locator(".checkpoints-view input[type='search'].toolbar-grow").fill("Fixture Flow");
   await page.getByRole("button", { name: "Search" }).click();
   await page.waitForSelector(".checkpoints-view .list-row", { timeout: 10000 });
 }
@@ -139,7 +139,7 @@ async function prepareFlowsView(page: Page) {
 async function prepareSignalsView(page: Page) {
   await navigateSidebar(page, "Signal Library");
   await page.waitForSelector(".signals-view", { timeout: 10000 });
-  await page.locator(".signals-view input[type='search'].toolbar-grow").fill("age_check");
+  await page.locator(".signals-view input[type='search'].toolbar-grow").fill("fixture_signal");
   await page.getByRole("button", { name: "Search" }).click();
   await page.waitForSelector(".signals-view .list-row", { timeout: 10000 });
 }
@@ -182,8 +182,7 @@ test.describe("visual review — overview", () => {
 test.describe("visual review — workbench", () => {
   test.beforeEach(async ({ page }) => {
     await authenticate(page);
-    const tenantId = await firstTenantId(page);
-    await selectTenant(page, tenantId);
+    await selectVisualFixtureTenant(page);
   });
 
   test("workbench detail header spacing", async ({ page }) => {
@@ -269,34 +268,35 @@ async function prepareAuditPromotionsView(page: Page) {
 async function prepareTestLabView(page: Page) {
   await navigateSidebar(page, "Test Lab");
   await page.waitForSelector(".decision-test-view", { timeout: 10000 });
-  await page.getByRole("button", { name: "Load all" }).click();
+  await page.locator(".decision-test-view input[type='search'].toolbar-grow").fill("Fixture Flow");
+  await page.getByRole("button", { name: "Search" }).click();
   await page.waitForSelector(".decision-test-view .list-row", { timeout: 10000 });
 }
 
 async function prepareAssociationsView(page: Page) {
   await navigateSidebar(page, "Relationships");
   await page.waitForSelector(".associations-view", { timeout: 10000 });
+  await page.locator(".associations-view input[type='search'].toolbar-grow").fill("Fixture Flow");
   await page.getByRole("button", { name: "Search" }).click();
-  await page.waitForTimeout(500);
+  await page.waitForSelector(".associations-view .resource-card, .associations-view tbody tr", { timeout: 10000 });
 }
 
 async function prepareTenantsView(page: Page) {
   await navigateSidebar(page, "Tenants");
   await page.waitForSelector(".tenants-view", { timeout: 10000 });
-  await page.getByRole("button", { name: "Load all" }).click();
-  await page.waitForTimeout(500);
+  await page.locator(".tenants-view input[type='search'].toolbar-grow").fill("VISUAL FIXTURE BANK");
+  await page.getByRole("button", { name: "Search" }).click();
+  await page.waitForSelector(".tenants-view .resource-card, .tenants-view tbody tr", { timeout: 10000 });
 }
 
 test.describe("visual review — operate workbenches", () => {
   test.beforeEach(async ({ page }) => {
     await authenticate(page);
-    const tenantId = await firstTenantId(page);
-    await selectTenant(page, tenantId);
+    await selectVisualFixtureTenant(page);
   });
 
   test("audit desktop", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
-    await selectVisualFixtureTenant(page);
     await prepareAuditPromotionsView(page);
     await page.waitForTimeout(300);
     await neutralizePointer(page);
@@ -308,7 +308,6 @@ test.describe("visual review — operate workbenches", () => {
 
   test("audit mobile", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-    await selectVisualFixtureTenant(page);
     await prepareAuditPromotionsView(page);
     await page.waitForTimeout(300);
     await neutralizePointer(page);

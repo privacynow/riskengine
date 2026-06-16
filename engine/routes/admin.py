@@ -505,15 +505,6 @@ def create_signal(payload: SignalCreateUpdate):
                 """,
                 (new_signal_id, payload.copy_from_signal_id),
             )
-            cur.execute(
-                """
-                INSERT INTO checkpoint_signals (checkpoint_id, signal_id)
-                SELECT checkpoint_id, %s
-                  FROM checkpoint_signals
-                 WHERE signal_id = %s
-                """,
-                (new_signal_id, payload.copy_from_signal_id),
-            )
 
         conn.commit()
         return admin_mutation("created", new_signal_id)
@@ -1064,6 +1055,38 @@ def delete_variable_value(variable_value_id: UuidStr):
             conn.close()
 
 
+def _validate_checkpoint_signal_association(cur, checkpoint_id: str, signal_id: str) -> None:
+    cur.execute("SELECT tenant_id FROM checkpoints WHERE id = %s", (checkpoint_id,))
+    checkpoint = cur.fetchone()
+    if not checkpoint:
+        raise HTTPException(status_code=404, detail="Checkpoint not found.")
+    cur.execute("SELECT tenant_id, name FROM signals WHERE id = %s", (signal_id,))
+    signal = cur.fetchone()
+    if not signal:
+        raise HTTPException(status_code=404, detail="Signal not found.")
+    if str(checkpoint[0]) != str(signal[0]):
+        raise HTTPException(
+            status_code=422,
+            detail="Checkpoint and signal must belong to the same tenant.",
+        )
+    cur.execute(
+        """
+        SELECT 1
+          FROM checkpoint_signals cs
+          JOIN signals existing ON existing.id = cs.signal_id
+          JOIN signals incoming ON incoming.id = %s
+         WHERE cs.checkpoint_id = %s
+           AND existing.name = incoming.name
+        """,
+        (signal_id, checkpoint_id),
+    )
+    if cur.fetchone():
+        raise HTTPException(
+            status_code=409,
+            detail="Checkpoint already links a signal with this name.",
+        )
+
+
 @router.post("/ui/checkpoint_signals")
 def create_checkpoint_signal(payload: CheckpointSignalCreateUpdate):
     conn = None
@@ -1071,6 +1094,9 @@ def create_checkpoint_signal(payload: CheckpointSignalCreateUpdate):
         new_id = str(uuid.uuid4())
         conn = get_db_connection()
         cur = conn.cursor()
+        _validate_checkpoint_signal_association(
+            cur, payload.checkpoint_id, payload.signal_id
+        )
         cur.execute(
             """
             INSERT INTO checkpoint_signals

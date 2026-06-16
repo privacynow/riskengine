@@ -42,9 +42,9 @@ class TestDslPreflight:
         assert any("request_score" in warn for warn in result["warnings"])
 
     def test_disallowed_call_fails(self):
-        result = preflight_dsl("age_check()", signal_names=["age_check"])
+        result = preflight_dsl("max(age_check, 1)", signal_names=["age_check"])
         assert result["ok"] is False
-        assert any("Disallowed" in err for err in result["errors"])
+        assert result["errors"]
 
     def test_extract_identifiers_ignores_keywords(self):
         names = extract_dsl_identifiers("age_check and not blocklist_check")

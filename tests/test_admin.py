@@ -1,9 +1,13 @@
 import os
+import uuid
 
 import pytest
 from fastapi.testclient import TestClient
 
 from tests.conftest import OTHER_TENANT, SAMPLE_TENANT, TEST_ADMIN_TOKEN, TEST_SAMPLE_TOKEN
+from tests.seed_reset import SEED_CHECKPOINT_CURRENT
+
+SEED_ONBOARDING_CHECKPOINT = SEED_CHECKPOINT_CURRENT[SAMPLE_TENANT]["Onboarding"]
 
 
 @pytest.fixture
@@ -32,11 +36,11 @@ class TestAdminHygiene:
         assert resp.status_code == 404
 
     def test_make_current_requires_promotion_reason(self, client):
-        listed = client.get(
-            f"/ui/checkpoints?tenant_id={SAMPLE_TENANT}&page=1&size=50",
+        target = client.get(
+            f"/ui/checkpoints/{SEED_ONBOARDING_CHECKPOINT}",
             headers=auth_header(TEST_ADMIN_TOKEN),
-        ).json()["items"]
-        target = next(item for item in listed if item["name"] == "Onboarding")
+        ).json()
+        assert target["name"] == "Onboarding"
 
         missing = client.post(
             f"/ui/checkpoints/{target['id']}/make_current",
@@ -176,7 +180,7 @@ class TestAdminHygiene:
         ).json()["items"]
         assert not any(item["name"] == "cross-tenant-assoc-test" for item in missing)
 
-    def test_create_signal_version_copies_associations(self, client):
+    def test_create_signal_version_copies_variable_values_only(self, client):
         source = client.get(
             f"/ui/signals?tenant_id={SAMPLE_TENANT}&q=age_check&page=1&size=1",
             headers=auth_header(TEST_ADMIN_TOKEN),
@@ -204,13 +208,70 @@ class TestAdminHygiene:
             f"/ui/checkpoint_signals?signal_id={new_id}&tenant_id={SAMPLE_TENANT}&size=50",
             headers=auth_header(TEST_ADMIN_TOKEN),
         ).json()["items"]
-        source_assoc = client.get(
-            f"/ui/checkpoint_signals?signal_id={source_id}&tenant_id={SAMPLE_TENANT}&size=50",
+        assert assoc == []
+
+    def test_create_checkpoint_signal_rejects_duplicate_logical_name(self, client):
+        age_check = client.get(
+            f"/ui/signals?tenant_id={SAMPLE_TENANT}&q=age_check&page=1&size=1",
             headers=auth_header(TEST_ADMIN_TOKEN),
-        ).json()["items"]
-        assert {row["checkpoint_id"] for row in assoc} == {
-            row["checkpoint_id"] for row in source_assoc
-        }
+        ).json()["items"][0]
+        created = client.post(
+            "/ui/checkpoints",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "tenant_id": SAMPLE_TENANT,
+                "name": f"dup-assoc-guard-{uuid.uuid4().hex[:8]}",
+                "type": "onboarding",
+                "dsl_expression": "True",
+                "signals": [age_check["id"]],
+            },
+        )
+        assert created.status_code == 200
+        checkpoint_id = created.json()["id"]
+
+        resp = client.post(
+            "/ui/checkpoint_signals",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "checkpoint_id": checkpoint_id,
+                "signal_id": age_check["id"],
+            },
+        )
+        assert resp.status_code == 409
+
+    def test_create_checkpoint_signal_rejects_cross_tenant(self, client):
+        created = client.post(
+            "/ui/checkpoints",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "tenant_id": SAMPLE_TENANT,
+                "name": f"cross-tenant-link-{uuid.uuid4().hex[:8]}",
+                "type": "onboarding",
+                "dsl_expression": "True",
+            },
+        )
+        assert created.status_code == 200
+        foreign = client.post(
+            "/ui/signals",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "tenant_id": OTHER_TENANT,
+                "name": "foreign-assoc-signal",
+                "type": "expression",
+                "expression_body": "True",
+            },
+        )
+        assert foreign.status_code == 200
+
+        resp = client.post(
+            "/ui/checkpoint_signals",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "checkpoint_id": created.json()["id"],
+                "signal_id": foreign.json()["id"],
+            },
+        )
+        assert resp.status_code == 422
 
     def test_create_checkpoint_rejects_invalid_signal_uuid(self, client):
         resp = client.post(
@@ -397,11 +458,12 @@ class TestAdminHygiene:
         assert "Decision Engine Admin" not in resp.text
 
     def test_admin_get_checkpoint_includes_is_current_version(self, client):
-        listed = client.get(
-            f"/ui/checkpoints?tenant_id={SAMPLE_TENANT}&page=1&size=50",
+        current = client.get(
+            f"/ui/checkpoints/{SEED_ONBOARDING_CHECKPOINT}",
             headers=auth_header(TEST_ADMIN_TOKEN),
-        ).json()["items"]
-        current = next(item for item in listed if item["name"] == "Onboarding" and item["is_current_version"])
+        ).json()
+        assert current["name"] == "Onboarding"
+        assert current["is_current_version"] is True
         detail = client.get(
             f"/ui/checkpoints/{current['id']}",
             headers=auth_header(TEST_ADMIN_TOKEN),
