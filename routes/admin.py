@@ -22,6 +22,7 @@ from services.security import (
     admin_signal_secret_fields,
     contains_embedded_credential,
     has_bearer_token_value,
+    redact_param_map_for_response,
     redact_template_for_response,
     resolve_bearer_token_for_persist,
 )
@@ -1443,6 +1444,17 @@ def search_signal_logs(q: Optional[str] = None,
                 })
 
         all_logs = list(log_map.values())
+        for log in all_logs:
+            raw_map = {
+                item["param_name"]: item["param_value"]
+                for item in log["param_values"]
+                if item.get("param_name") is not None
+            }
+            redacted_map = redact_param_map_for_response(raw_map)
+            log["param_values"] = [
+                {"param_name": name, "param_value": value}
+                for name, value in redacted_map.items()
+            ]
 
         # Apply pagination in memory
         start_index = (page - 1) * size

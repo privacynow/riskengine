@@ -26,10 +26,18 @@ _SENSITIVE_NAME = re.compile(
     r"^(authorization|x-api-key|api-key|api_key|x-auth-token|secret|token|password)$",
     re.IGNORECASE,
 )
+_PLACEHOLDER_PATTERN = re.compile(r"%([^%]+)%")
 _SENSITIVE_KV_PATTERN = re.compile(
     r'(?i)(["\']?(?:api[_-]?key|secret|token|password|authorization)["\']?\s*[:=]\s*)'
     r'("(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|[^"\')\s,]+)'
 )
+
+
+def _contains_sensitive_placeholder(text: str) -> bool:
+    for match in _PLACEHOLDER_PATTERN.finditer(text):
+        if _is_sensitive_name(match.group(1).strip()):
+            return True
+    return False
 
 
 def _redact_sensitive_kv_strings(text: str) -> str:
@@ -81,6 +89,8 @@ def redact_template_for_response(template: Optional[str]) -> Optional[str]:
 def contains_embedded_credential(template: Optional[str]) -> bool:
     if not template or not template.strip():
         return False
+    if _contains_sensitive_placeholder(template):
+        return True
     for line in template.split("\n"):
         if ":" in line:
             key, _, value = line.partition(":")

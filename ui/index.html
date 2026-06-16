@@ -372,6 +372,32 @@
     .btn-selected:hover {
       background: #45a049;
     }
+    .ui-notice {
+      margin: 0 0 12px 0;
+      padding: 10px 36px 10px 12px;
+      border-radius: 4px;
+      position: relative;
+    }
+    .ui-notice-info {
+      background: #e8f5e9;
+      border: 1px solid #c8e6c9;
+      color: #1b5e20;
+    }
+    .ui-notice-error {
+      background: #ffebee;
+      border: 1px solid #ffcdd2;
+      color: #b71c1c;
+    }
+    .ui-notice-dismiss {
+      position: absolute;
+      right: 8px;
+      top: 6px;
+      border: none;
+      background: transparent;
+      font-size: 18px;
+      cursor: pointer;
+      color: inherit;
+    }
     .signal-details {
       padding: 15px;
       background-color: #f8f9fa;
@@ -1097,7 +1123,7 @@
       </table>
     </div>
 
-    <div v-if="signal.type === 'http'" class="detail-section">
+    <div v-if="isEndpointSignalType(signal.type)" class="detail-section">
       <h4>HTTP Details</h4>
       <table class="detail-table">
         <tr>
@@ -1167,7 +1193,8 @@
       <select v-model="formData.type" :disabled="!createNew">
         <option value="variable">Variable</option>
         <option value="function">Function</option>
-        <option value="http">HTTP</option>
+        <option value="internal_endpoint">Internal endpoint</option>
+        <option value="external_endpoint">External endpoint</option>
       </select>
     </div>
 
@@ -1204,7 +1231,7 @@
     </div>
 
     <!-- HTTP-specific fields -->
-    <template v-if="formData.type === 'http'">
+    <template v-if="isEndpointSignalType(formData.type)">
       <div class="form-field">
         <label>HTTP Method:</label>
         <select v-model="formData.http_method">
@@ -1375,6 +1402,10 @@
 </script>
 
 <script>
+function isEndpointSignalType(type) {
+  return type === 'internal_endpoint' || type === 'external_endpoint';
+}
+
 // Register the checkpoint-form component
 Vue.component('checkpoint-form', {
   template: '#checkpoint-form',
@@ -1403,6 +1434,11 @@ Vue.component('signal-details', {
       type: Object,
       required: true
     }
+  },
+  methods: {
+    isEndpointSignalType(type) {
+      return isEndpointSignalType(type);
+    }
   }
 });
 
@@ -1420,6 +1456,9 @@ Vue.component('signal-form', {
     }
   },
   methods: {
+    isEndpointSignalType(type) {
+      return isEndpointSignalType(type);
+    },
     onSignalPageChange(page) {
       this.$emit('signal-page-change', page);
     }
@@ -1549,6 +1588,10 @@ Vue.component('signal-list', {
   </div>
 
   <div v-if="isVueReady" class="app-main" v-cloak>
+  <div v-if="uiNotice.visible" :class="['ui-notice', uiNotice.isError ? 'ui-notice-error' : 'ui-notice-info']">
+    {{ uiNotice.message }}
+    <button type="button" class="ui-notice-dismiss" @click="uiNotice.visible = false">×</button>
+  </div>
   <div class="demo-banner">
     Local demo only. Admin access requires a bearer token at login; do not expose this UI publicly without real auth.
     <button class="btn secondary" style="float:right; padding:2px 8px;" @click="clearAuthToken">Sign out</button>
@@ -1830,69 +1873,6 @@ Vue.component('signal-list', {
             @signal-page-change="onCheckpointSignalPageChange"
           ></checkpoint-form>
           </div>
-
-        <!-- Checkpoint Confirmation Dialog -->
-        <div v-if="isVueReady && showCheckpointConfirmation" class="modal-overlay" v-cloak>
-          <div class="modal-content" style="max-width: 600px;">
-            <h3 style="margin-top: 0; color: #e65100;">Checkpoint Already Exists</h3>
-            <div class="alert alert-warning" style="background: #fff3e0; border: 1px solid #ffe0b2; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
-              <p style="margin: 0 0 10px 0;">A checkpoint with the name <strong>{{ newCheckpointData.name }}</strong> already exists.</p>
-              <div style="font-size: 0.9em; color: #666;">
-                <p v-if="existingCheckpoint.is_current_version" style="color: #2e7d32; margin: 5px 0;">
-                  <strong>✓ This is the current version</strong>
-                </p>
-                <p v-else style="color: #666; margin: 5px 0;">
-                  This is the latest version (not set as current)
-                </p>
-                <p style="margin: 5px 0;">
-                  Created: {{ new Date(existingCheckpoint.created_at).toLocaleString() }}
-                </p>
-          </div>
-          </div>
-            
-            <div class="existing-checkpoint-details" style="background: #fafafa; padding: 15px; border-radius: 4px; margin-bottom: 20px;">
-              <div style="margin-bottom: 10px;">
-                <strong>Description:</strong>
-                <p style="margin: 5px 0; color: #666;">{{ existingCheckpoint.description || 'No description' }}</p>
-          </div>
-              
-              <div style="margin-bottom: 10px;">
-                <strong>Type:</strong>
-                <p style="margin: 5px 0; color: #666;">{{ existingCheckpoint.type || 'No type specified' }}</p>
-          </div>
-              
-              <div style="margin-bottom: 10px;">
-                <strong>DSL Expression:</strong>
-                <pre style="margin: 5px 0; padding: 10px; background: #f5f5f5; border-radius: 4px; overflow-x: auto;">{{ existingCheckpoint.dsl_expression || 'No DSL expression' }}</pre>
-              </div>
-              
-              <div>
-                <div class="form-inline" style="align-items: center; gap: 10px; margin-bottom: 10px;">
-                  <strong style="margin: 0; white-space: nowrap;">Signals:</strong>
-                  <input type="text" v-model="newCheckpointData.signalSearch" placeholder="Search signals..." style="flex: 1; margin: 0;">
-                  <button class="btn" @click="fetchCheckpointSignalSearch(1)">Search</button>
-                  <button class="btn" @click="loadAllSignalsForCheckpoint(1)">Load All</button>
-                  <button class="btn" @click="showSignalCreateForm = true">Create Signal</button>
-              </div>
-                <ul style="margin: 5px 0; padding-left: 20px; color: #666;">
-                  <li v-for="signal in existingCheckpoint.signals" :key="signal.id">
-                    {{ signal.name }}
-                  </li>
-                  <li v-if="!existingCheckpoint.signals || existingCheckpoint.signals.length === 0">No signals associated</li>
-                </ul>
-              </div>
-            </div>
-
-            <p style="margin-bottom: 20px; color: #666;">
-              Creating a new checkpoint with the same name will create a new version. The original version will be preserved.
-            </p>
-
-            <div class="form-inline" style="justify-content: flex-end;">
-              <button class="btn secondary" @click="cancelCheckpointCreation" style="margin-right: 10px;">Cancel</button>
-              <button class="btn" @click="confirmCheckpointCreation">Create New Version</button>
-            </div>
-          </div>
-        </div>
 
         <!-- Existing Checkpoints Table -->
         <table v-if="checkpoints.length">

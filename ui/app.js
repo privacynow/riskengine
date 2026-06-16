@@ -27,6 +27,23 @@ function apiFetch(url, options = {}) {
   });
 }
 
+function isEndpointSignalType(type) {
+  return type === "internal_endpoint" || type === "external_endpoint";
+}
+
+function showUiNotice(vm, message, isError = false) {
+  if (!vm) {
+    return;
+  }
+  vm.uiNotice = { message, isError, visible: true };
+  if (vm._uiNoticeTimer) {
+    clearTimeout(vm._uiNoticeTimer);
+  }
+  vm._uiNoticeTimer = setTimeout(() => {
+    vm.uiNotice.visible = false;
+  }, 6000);
+}
+
 function mountApp() {
   if (!document.getElementById("app")) {
     console.error("Decision Engine admin UI: #app mount point not found.");
@@ -43,6 +60,7 @@ new Vue({
     showAuthPrompt: true,
     authTokenInput: "",
     authError: "",
+    uiNotice: { message: "", isError: false, visible: false },
     showSignalConfirmation: false,
 
     // For version checking
@@ -307,6 +325,9 @@ new Vue({
     },
   },
   methods: {
+    isEndpointSignalType(type) {
+      return isEndpointSignalType(type);
+    },
     //---------------------------------------
     // Navigation
     //---------------------------------------
@@ -431,7 +452,7 @@ new Vue({
         })
         .catch(err => {
           console.error("Error creating tenant:", err);
-          alert('Error creating tenant: ' + err.message);
+          showUiNotice(this, 'Error creating tenant: ' + err.message, true);
         });
     },
     toggleExpandTenant(tenantId) {
@@ -453,7 +474,7 @@ new Vue({
       .then(response => response.json())
       .then(data => {
         if (data.error) {
-          alert(data.error);
+          showUiNotice(this, data.error, true);
           return;
         }
           this.fetchTenants(this.tenantPage);
@@ -600,7 +621,7 @@ new Vue({
         .then(data => {
           const assoc = data.items.find(a => a.checkpoint_id === cpId && a.signal_id === sigId);
           if (!assoc) {
-            alert("Association not found. Possibly already removed.");
+            showUiNotice(this, "Association not found. Possibly already removed.", true);
             return;
           }
           return apiFetch(`/ui/checkpoint_signals/${assoc.id}`, { method: "DELETE" });
@@ -656,7 +677,7 @@ new Vue({
         })
       .catch(error => {
         console.error('Error saving checkpoint:', error);
-        alert('Error saving checkpoint: ' + error.message);
+        showUiNotice(this, 'Error saving checkpoint: ' + error.message, true);
       });
     },
     addSignalToCheckpoint(signalId) {
@@ -675,19 +696,19 @@ new Vue({
     createCheckpoint() {
       // Validate required fields
       if (!this.checkpointsTenantFilter) {
-        alert("Please select a tenant first.");
+        showUiNotice(this, "Please select a tenant first.", true);
         return;
       }
       if (!this.newCheckpointData.name) {
-        alert("Checkpoint name is required.");
+        showUiNotice(this, "Checkpoint name is required.", true);
         return;
       }
       if (!this.newCheckpointData.type) {
-        alert("Checkpoint type is required.");
+        showUiNotice(this, "Checkpoint type is required.", true);
         return;
       }
       if (!this.newCheckpointData.dsl_expression) {
-        alert("DSL expression is required.");
+        showUiNotice(this, "DSL expression is required.", true);
         return;
       }
 
@@ -755,7 +776,7 @@ new Vue({
         .catch(err => {
           if (err === 'checkpoint_exists') return;
           console.error("Error creating checkpoint:", err);
-          alert('Error creating checkpoint: ' + err.message);
+          showUiNotice(this, 'Error creating checkpoint: ' + err.message, true);
         });
     },
     confirmCheckpointCreation() {
@@ -804,7 +825,7 @@ new Vue({
         })
         .catch(err => {
           console.error("Error creating checkpoint:", err);
-          alert('Error creating checkpoint: ' + err.message);
+          showUiNotice(this, 'Error creating checkpoint: ' + err.message, true);
           this.showCheckpointConfirmation = false;
           this.existingCheckpoint = null;
         });
@@ -944,7 +965,7 @@ new Vue({
     },
     associateSignalToCreatedCheckpoint(signalId) {
       if (!this.createdCheckpointId) {
-        alert("No checkpoint ID found. Create checkpoint first.");
+        showUiNotice(this, "No checkpoint ID found. Create checkpoint first.", true);
         return;
       }
       const payload = {
@@ -964,7 +985,7 @@ new Vue({
           return resp.json();
         })
         .then(result => {
-          alert("Signal associated!");
+          showUiNotice(this, "Signal associated!", false);
         })
         .catch(err => console.error(err));
     },
@@ -1196,7 +1217,7 @@ new Vue({
         .then(data => {
           const assoc = data.items.find(a => a.signal_id === sigId && a.checkpoint_id === cpId);
           if (!assoc) {
-            alert("Association not found.");
+            showUiNotice(this, "Association not found.", true);
             return;
           }
           return apiFetch(`/ui/checkpoint_signals/${assoc.id}`, { method: "DELETE" });
@@ -1212,7 +1233,7 @@ new Vue({
     },
     createSignal() {
       if (!this.currentGlobalTenant) {
-        alert("Please select a tenant first.");
+        showUiNotice(this, "Please select a tenant first.", true);
         return;
       }
       
@@ -1260,7 +1281,7 @@ new Vue({
         })
         .catch(err => {
           console.error("Error creating signal:", err);
-          alert('Error creating signal: ' + err.message);
+          showUiNotice(this, 'Error creating signal: ' + err.message, true);
         });
     },
     toggleExpandSignal(sid) {
@@ -1314,7 +1335,7 @@ new Vue({
         })
       .catch(error => {
         console.error('Error saving signal:', error);
-        alert('Error saving signal: ' + error.message);
+        showUiNotice(this, 'Error saving signal: ' + error.message, true);
       });
     },
     fetchCheckpointsForSignalEdit(sid, page) {
@@ -2137,7 +2158,7 @@ new Vue({
     invokeTestDecision(cpId) {
       const cp = this.testDecCheckpoints.find(c => c.id === cpId);
       if (!cp) {
-        alert("Checkpoint not found in test list.");
+        showUiNotice(this, "Checkpoint not found in test list.", true);
         return;
       }
       const applicantId = this.testDecApplicantIds[cpId] || undefined;
@@ -2275,7 +2296,7 @@ new Vue({
       })
       .catch(error => {
         console.error('Error setting current version:', error);
-        alert('Error setting current version: ' + error.message);
+        showUiNotice(this, 'Error setting current version: ' + error.message, true);
       });
     },
     renderSignalDetails(signal) {
@@ -2299,7 +2320,7 @@ new Vue({
             </table>
           </div>
 
-          ${signal.type === 'http' ? `
+          ${isEndpointSignalType(signal.type) ? `
             <div class="detail-section">
               <h4>HTTP Endpoint Details</h4>
               <table class="detail-table">
@@ -2473,7 +2494,7 @@ new Vue({
     },
     setAsCurrentVersion(signalId) {
       if (!this.currentGlobalTenant) {
-        alert("Please select a tenant first.");
+        showUiNotice(this, "Please select a tenant first.", true);
         return;
       }
 
@@ -2501,7 +2522,7 @@ new Vue({
       })
       .catch(error => {
         console.error('Error setting current version:', error);
-        alert('Error setting current version: ' + error.message);
+        showUiNotice(this, 'Error setting current version: ' + error.message, true);
       });
     },
     bootstrapApp() {

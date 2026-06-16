@@ -56,6 +56,13 @@ class TestTemplateRedaction:
         assert contains_embedded_credential('{"api_key": "abc123"}')
         assert not contains_embedded_credential("Content-Type: application/json")
 
+    def test_rejects_sensitive_placeholder_names(self):
+        from services.security import contains_embedded_credential
+
+        assert contains_embedded_credential("X-Custom: %api_key%")
+        assert contains_embedded_credential('{"key": "%token%"}')
+        assert not contains_embedded_credential("userId=%applicant_id%")
+
 
 class TestParamMapRedaction:
     def test_redacts_sensitive_param_names(self):

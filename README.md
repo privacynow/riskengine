@@ -11,9 +11,9 @@
 
 **Cost limits:** When `override_cost_flag` is false, same-order signals run sequentially and cumulative cost is checked before each signal. When `override_cost_flag` is true, same-order signals may run concurrently without cost gating.
 
-**Not yet implemented:** Per-signal HTTP timeouts beyond a fixed 5s client default, `can_run_in_parallel` enforcement, immutable config writes (Step B).
+**Not yet implemented:** Per-signal HTTP timeouts beyond a fixed 5s client default, `can_run_in_parallel` enforcement, immutable config writes.
 
-> **Status:** Working prototype. See [ROADMAP.md](ROADMAP.md).
+> **Status:** Working prototype. See [ROADMAP.md](ROADMAP.md) and [docs/DESIGN_NOTES.md](docs/DESIGN_NOTES.md).
 
 ---
 

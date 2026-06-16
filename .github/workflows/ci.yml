@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate demo env
+        run: bash scripts/create_demo_env.sh
+
+      - name: Start services
+        run: docker compose up -d --build
+
+      - name: Wait for app
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8000/docs >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "App did not become ready in time"
+          docker compose logs risk-engine
+          exit 1
+
+      - name: Pytest
+        run: docker compose exec -T -e RUN_INTEGRATION_TESTS=1 risk-engine pytest -q
+
+      - name: Smoke test
+        run: bash scripts/smoke_test.sh
+
+      - name: Whitespace check
+        run: git diff --check

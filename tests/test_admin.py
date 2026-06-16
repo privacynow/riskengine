@@ -259,3 +259,84 @@ class TestAdminHygiene:
             },
         )
         assert resp.status_code == 422
+
+    def test_signal_create_rejects_sensitive_placeholder_in_template(self, client):
+        resp = client.post(
+            "/ui/signals",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "tenant_id": SAMPLE_TENANT,
+                "name": "bad-placeholder-signal",
+                "type": "internal_endpoint",
+                "method_of_call": "http://127.0.0.1:8000/mock/onboarding",
+                "request_headers_template": "X-Custom: %api_key%",
+            },
+        )
+        assert resp.status_code == 422
+
+    def test_search_signal_logs_redacts_param_values(self, client):
+        from db import db_cursor
+
+        decision_id = "77777777-7777-7777-7777-777777777777"
+        signal_log_id = "88888888-8888-8888-8888-888888888888"
+        try:
+            with db_cursor() as (conn, cur):
+                cur.execute(
+                    """
+                    INSERT INTO decision_log (
+                        id, checkpoint_id, tenant_id, applicant_id,
+                        final_decision_value, cost_incurred, correlation_id
+                    ) VALUES (
+                        %s,
+                        '22222222-2222-2222-2222-222222222201',
+                        %s,
+                        'admin-log-redaction-test',
+                        'PENDING',
+                        0,
+                        'admin-log-redaction-correlation'
+                    )
+                    ON CONFLICT (id) DO NOTHING
+                    """,
+                    (decision_id, SAMPLE_TENANT),
+                )
+                cur.execute(
+                    """
+                    INSERT INTO signal_log (
+                        id, decision_log_id, signal_id, applicant_id,
+                        signal_value, cost_incurred, success
+                    ) VALUES (
+                        %s, %s, '33333333-3333-3333-3333-333333333301',
+                        'admin-log-redaction-test', 'True', 0, TRUE
+                    )
+                    ON CONFLICT (id) DO NOTHING
+                    """,
+                    (signal_log_id, decision_id),
+                )
+                cur.execute(
+                    """
+                    INSERT INTO signal_log_values (signal_log_id, param_name, param_value)
+                    VALUES (%s, 'Authorization', 'Bearer admin-log-secret')
+                    """,
+                    (signal_log_id,),
+                )
+                conn.commit()
+
+            resp = client.get(
+                "/ui/search_signal_logs?q=admin-log-redaction-test&page=1&size=10",
+                headers=auth_header(TEST_ADMIN_TOKEN),
+            )
+            assert resp.status_code == 200
+            items = resp.json()["items"]
+            assert items
+            params = items[0]["param_values"]
+            assert params[0]["param_value"] == "[REDACTED]"
+            assert "admin-log-secret" not in str(resp.json())
+        finally:
+            with db_cursor() as (conn, cur):
+                cur.execute(
+                    "DELETE FROM signal_log_values WHERE signal_log_id = %s",
+                    (signal_log_id,),
+                )
+                cur.execute("DELETE FROM signal_log WHERE id = %s", (signal_log_id,))
+                cur.execute("DELETE FROM decision_log WHERE id = %s", (decision_id,))
+                conn.commit()
