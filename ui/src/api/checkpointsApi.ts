@@ -13,6 +13,9 @@ export const checkpointsApi = {
   list(params: CheckpointListParams) {
     return httpJson<Paginated<Checkpoint>>(`/ui/checkpoints${buildQuery(params)}`);
   },
+  listAll(params: Omit<CheckpointListParams, "page" | "size"> = {}) {
+    return httpJson<Checkpoint[]>(`/ui/all_checkpoints${buildQuery(params)}`);
+  },
   search(params: CheckpointListParams & { q: string }) {
     return httpJson<Paginated<Checkpoint>>(
       `/ui/search_checkpoints${buildQuery(params)}`

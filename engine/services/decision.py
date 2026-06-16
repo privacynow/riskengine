@@ -358,22 +358,27 @@ async def execute_decision(
             return
 
         remaining = remaining_checkpoint_seconds()
+        tasks = {asyncio.create_task(run_signal(sig)): sig for sig in batch}
+        done: set[asyncio.Task]
+        pending: set[asyncio.Task]
 
-        async def _run_all():
-            nonlocal total_cost
-            results = await asyncio.gather(*(run_signal(sig) for sig in batch))
-            for name, val, cost in results:
-                signal_results[name] = coerce_signal_value(val)
-                total_cost += cost
+        if remaining is not None:
+            done, pending = await asyncio.wait(tasks.keys(), timeout=max(0.001, remaining))
+        else:
+            done, pending = await asyncio.wait(tasks.keys())
 
-        try:
-            if remaining is not None:
-                await asyncio.wait_for(_run_all(), timeout=max(0.001, remaining))
-            else:
-                await _run_all()
-        except asyncio.TimeoutError:
+        for task in done:
+            name, val, cost = task.result()
+            signal_results[name] = coerce_signal_value(val)
+            total_cost += cost
+
+        if pending:
             checkpoint_timed_out = True
-            for sig in batch:
+            for task in pending:
+                task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
+            for task in pending:
+                sig = tasks[task]
                 if sig.name not in signal_results:
                     await record_skipped_signal(sig, "checkpoint_timeout")
 

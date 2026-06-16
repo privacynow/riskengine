@@ -20,7 +20,7 @@ vi.mock("@/app/router", () => ({
 }));
 
 vi.mock("@/api/tenantsApi", () => ({
-  tenantsApi: { list: vi.fn() },
+  tenantsApi: { list: vi.fn(), listAll: vi.fn() },
 }));
 
 import { useTenantStore } from "@/stores/tenantStore";

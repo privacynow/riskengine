@@ -117,6 +117,32 @@ class TestAdminHygiene:
         )
         assert missing.status_code == 422
 
+    def test_all_tenants_is_not_limited_by_page_cap(self, client):
+        from engine.db import db_cursor
+
+        created_ids = [str(uuid.uuid4()) for _ in range(105)]
+        try:
+            with db_cursor() as (conn, cur):
+                for index, tenant_id in enumerate(created_ids):
+                    cur.execute(
+                        """
+                        INSERT INTO tenants (id, name)
+                        VALUES (%s, %s)
+                        """,
+                        (tenant_id, f"zz-all-tenants-regression-{index:03d}"),
+                    )
+                conn.commit()
+
+            resp = client.get("/ui/all_tenants", headers=auth_header(TEST_ADMIN_TOKEN))
+            assert resp.status_code == 200
+            returned_ids = {item["id"] for item in resp.json()}
+            assert set(created_ids).issubset(returned_ids)
+        finally:
+            with db_cursor() as (conn, cur):
+                for tenant_id in created_ids:
+                    cur.execute("DELETE FROM tenants WHERE id = %s", (tenant_id,))
+                conn.commit()
+
     def test_create_checkpoint_with_associated_signals(self, client):
         signals = client.get(
             f"/ui/signals?tenant_id={SAMPLE_TENANT}&page=1&size=50",
@@ -235,6 +261,36 @@ class TestAdminHygiene:
             json={
                 "checkpoint_id": checkpoint_id,
                 "signal_id": age_check["id"],
+            },
+        )
+        assert resp.status_code == 409
+
+    def test_create_checkpoint_rejects_duplicate_logical_signal_names(self, client):
+        age_check = client.get(
+            f"/ui/signals?tenant_id={SAMPLE_TENANT}&q=age_check&page=1&size=1",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        ).json()["items"][0]
+        fork = client.post(
+            "/ui/signals",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "tenant_id": SAMPLE_TENANT,
+                "name": age_check["name"],
+                "type": "expression",
+                "expression_body": "True",
+            },
+        )
+        assert fork.status_code == 200
+
+        resp = client.post(
+            "/ui/checkpoints",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "tenant_id": SAMPLE_TENANT,
+                "name": f"dup-create-guard-{uuid.uuid4().hex[:8]}",
+                "type": "onboarding",
+                "dsl_expression": "True",
+                "signals": [age_check["id"], fork.json()["id"]],
             },
         )
         assert resp.status_code == 409
@@ -551,6 +607,109 @@ class TestAdminHygiene:
             assert item["success"] is False
             if item.get("signal_name"):
                 assert isinstance(item["signal_name"], str)
+
+    def test_search_signal_logs_paginates_distinct_logs_before_params(self, client):
+        from engine.db import db_cursor
+
+        marker = f"log-page-{uuid.uuid4().hex[:8]}"
+        decision_ids = [str(uuid.uuid4()), str(uuid.uuid4())]
+        signal_log_ids = [str(uuid.uuid4()), str(uuid.uuid4())]
+        try:
+            with db_cursor() as (conn, cur):
+                cur.execute(
+                    """
+                    SELECT signal_id
+                      FROM signal_current_version
+                     WHERE tenant_id = %s AND name = 'age_check'
+                    """,
+                    (SAMPLE_TENANT,),
+                )
+                signal_id = str(cur.fetchone()[0])
+                for idx, decision_id in enumerate(decision_ids):
+                    cur.execute(
+                        """
+                        INSERT INTO decision_log (
+                            id, checkpoint_id, tenant_id, applicant_id,
+                            final_decision_value, cost_incurred, correlation_id,
+                            decision_timestamp
+                        )
+                        VALUES (%s, %s, %s, %s, 'True', 0, %s, NOW() - (%s * INTERVAL '1 minute'))
+                        """,
+                        (
+                            decision_id,
+                            SEED_ONBOARDING_CHECKPOINT,
+                            SAMPLE_TENANT,
+                            f"{marker}-app-{idx}",
+                            f"{marker}-corr-{idx}",
+                            idx,
+                        ),
+                    )
+                    cur.execute(
+                        """
+                        INSERT INTO signal_log (
+                            id, decision_log_id, signal_id, applicant_id,
+                            signal_value, started_at, completed_at,
+                            cost_incurred, success
+                        )
+                        VALUES (%s, %s, %s, %s, 'True',
+                                NOW() - (%s * INTERVAL '1 minute'),
+                                NOW() - (%s * INTERVAL '1 minute'),
+                                0, TRUE)
+                        """,
+                        (
+                            signal_log_ids[idx],
+                            decision_id,
+                            signal_id,
+                            f"{marker}-app-{idx}",
+                            idx,
+                            idx,
+                        ),
+                    )
+                for param_name in ["first", "second"]:
+                    cur.execute(
+                        """
+                        INSERT INTO signal_log_values (
+                            id, signal_log_id, param_name, param_value
+                        )
+                        VALUES (%s, %s, %s, %s)
+                        """,
+                        (
+                            str(uuid.uuid4()),
+                            signal_log_ids[0],
+                            param_name,
+                            f"{marker}-{param_name}",
+                        ),
+                    )
+                conn.commit()
+
+            resp = client.get(
+                f"/ui/search_signal_logs?tenant_id={SAMPLE_TENANT}&q={marker}&page=1&size=2",
+                headers=auth_header(TEST_ADMIN_TOKEN),
+            )
+            assert resp.status_code == 200
+            items = resp.json()["items"]
+            assert len(items) == 2
+            assert {item["id"] for item in items} == set(signal_log_ids)
+            first = next(item for item in items if item["id"] == signal_log_ids[0])
+            assert {param["param_name"] for param in first["param_values"]} == {
+                "first",
+                "second",
+            }
+        finally:
+            with db_cursor() as (conn, cur):
+                cur.execute(
+                    "DELETE FROM signal_log_values WHERE signal_log_id = ANY(%s::uuid[])",
+                    (signal_log_ids,),
+                )
+                cur.execute(
+                    "DELETE FROM signal_log WHERE id = ANY(%s::uuid[])",
+                    (signal_log_ids,),
+                )
+                cur.execute(
+                    "DELETE FROM decision_log WHERE id = ANY(%s::uuid[])",
+                    (decision_ids,),
+                )
+                conn.commit()
 
     def test_dsl_preflight_endpoint(self, client):
         ok = client.post(
@@ -973,6 +1132,51 @@ class TestAdminHygiene:
         ).json()["items"]
         actions = {row["action"] for row in audit}
         assert {"promote", "deactivate", "reactivate"}.issubset(actions)
+
+    def test_checkpoint_reactivate_rejects_when_another_version_is_current(self, client):
+        checkpoint_name = f"reactivate-current-guard-{uuid.uuid4().hex[:8]}"
+        first = client.post(
+            "/ui/checkpoints",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "tenant_id": SAMPLE_TENANT,
+                "name": checkpoint_name,
+                "type": "onboarding",
+                "dsl_expression": "True",
+            },
+        )
+        assert first.status_code == 200
+        first_id = first.json()["id"]
+        assert client.post(
+            f"/ui/checkpoints/{first_id}/make_current",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={"promotionReason": "Promote first version"},
+        ).status_code == 200
+
+        second = client.post(
+            "/ui/checkpoints",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "tenant_id": SAMPLE_TENANT,
+                "name": checkpoint_name,
+                "type": "onboarding",
+                "dsl_expression": "False",
+            },
+        )
+        assert second.status_code == 200
+        second_id = second.json()["id"]
+        assert client.post(
+            f"/ui/checkpoints/{second_id}/make_current",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={"promotionReason": "Promote second version"},
+        ).status_code == 200
+
+        reactivate = client.post(
+            f"/ui/checkpoints/{first_id}/reactivate",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={"promotionReason": "Should require promote"},
+        )
+        assert reactivate.status_code == 409
 
     def test_authoring_expression_signal_checkpoint_and_test_lab(self, client):
         signal_name = f"authoring_e2e_signal_{uuid.uuid4().hex[:8]}"

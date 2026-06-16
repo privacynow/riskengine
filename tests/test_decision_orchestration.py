@@ -284,3 +284,88 @@ class TestDecisionOrchestration:
         skipped = [item for item in captured if item.get("error_message") == "cost_budget_exceeded"]
         assert skipped
         assert skipped[0]["success"] is False
+
+    def test_parallel_checkpoint_timeout_preserves_completed_results(self, monkeypatch):
+        from engine.db import get_db_connection
+        from engine.services import decision as decision_mod
+
+        captured: list[dict] = []
+        original_put = decision_mod.log_queue.put
+
+        async def capture_put(item):
+            if item is not None:
+                captured.append(item)
+            return await original_put(item)
+
+        async def fake_invoke(*, expression_body, **kwargs):
+            if expression_body == "slow":
+                await asyncio.sleep(2)
+            else:
+                await asyncio.sleep(0.05)
+            return True
+
+        monkeypatch.setattr(decision_mod.log_queue, "put", capture_put)
+        monkeypatch.setattr(decision_mod, "invoke_signal", fake_invoke)
+        monkeypatch.setattr(
+            decision_mod,
+            "fetch_executable_signal_rows",
+            lambda cur, tenant_id, checkpoint_id: [
+                _expression_signal(
+                    "fast_signal",
+                    parallel=True,
+                    expression_body="fast",
+                    timeout_seconds=30,
+                ),
+                _expression_signal(
+                    "slow_signal",
+                    parallel=True,
+                    expression_body="slow",
+                    timeout_seconds=30,
+                ),
+            ],
+        )
+
+        from engine.services.tenancy import CheckpointRow
+
+        monkeypatch.setattr(
+            decision_mod,
+            "fetch_checkpoint_row_by_id",
+            lambda cur, tenant_id, checkpoint_id: CheckpointRow(
+                id=checkpoint_id,
+                tenant_id=tenant_id,
+                name="partial-timeout-test",
+                description=None,
+                type="onboarding",
+                dsl_expression="fast_signal and slow_signal",
+                method_of_call=None,
+                max_cost=10,
+                override_cost_flag=True,
+                timeout_seconds=1,
+            ),
+        )
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+        try:
+            response = asyncio.run(
+                execute_decision(
+                    conn,
+                    cur,
+                    SAMPLE_TENANT,
+                    DecisionRequest(
+                        checkpoint_name="partial-timeout-test",
+                        applicant_id="app-1",
+                    ),
+                    checkpoint_id=SAMPLE_ONBOARDING_CHECKPOINT,
+                )
+            )
+        finally:
+            cur.close()
+            conn.close()
+
+        assert response.signal_results["fast_signal"] is True
+        assert response.signal_results["slow_signal"] is False
+        timeout_logs = [
+            item for item in captured if item.get("error_message") == "checkpoint_timeout"
+        ]
+        assert [item["signal_id"] for item in timeout_logs] == ["id-slow_signal"]

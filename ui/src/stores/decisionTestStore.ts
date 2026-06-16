@@ -185,16 +185,14 @@ export const useDecisionTestStore = defineStore("decisionTest", {
       const tenantId = requireTenantId();
       if (!tenantId) return;
       try {
-        const data = await signalsApi.list({
-          page: 1,
-          size: 9999,
+        const items = await signalsApi.listAll({
           tenant_id: tenantId,
           checkpoint_id: checkpointId,
         });
-        this.assocSignals[checkpointId] = data.items;
+        this.assocSignals[checkpointId] = items;
         if (!this.expandedSignals[checkpointId]) this.expandedSignals[checkpointId] = {};
         if (!this.params[checkpointId]) this.params[checkpointId] = {};
-        for (const sig of data.items) {
+        for (const sig of items) {
           this.expandedSignals[checkpointId][sig.id] = false;
           if (!this.params[checkpointId][sig.id]) {
             this.params[checkpointId][sig.id] = {};

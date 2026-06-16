@@ -32,8 +32,7 @@ export const useTenantStore = defineStore("tenant", {
   actions: {
     async fetchAllTenants() {
       try {
-        const data = await tenantsApi.list(1, 9999);
-        this.allTenants = data.items;
+        this.allTenants = await tenantsApi.listAll();
       } catch (err) {
         useAuthStore().handleApiError(err);
       }

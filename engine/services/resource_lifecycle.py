@@ -117,6 +117,11 @@ def reactivate_checkpoint(
             status_code=409,
             detail="Checkpoint version is already current.",
         )
+    if current_id is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Another checkpoint version is current; use promote instead.",
+        )
     signal_names = _checkpoint_signal_names(cur, checkpoint_id)
     dsl_result = validate_expression(dsl_expression, signal_names, "strict")
     if not dsl_result.ok:
@@ -191,6 +196,11 @@ def reactivate_signal(
         raise HTTPException(
             status_code=409,
             detail="Signal version is already current.",
+        )
+    if current_id is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Another signal version is current; use promote instead.",
         )
     cur.execute(
         """

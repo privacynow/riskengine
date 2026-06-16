@@ -152,7 +152,13 @@ class SignalDetailRow(ExecutableSignalRow):
 
 
 CHECKPOINT_SIGNAL_EXECUTION_SQL = """
-    SELECT DISTINCT ON (s.name)
+    WITH linked_signal_names AS (
+        SELECT DISTINCT s.name
+          FROM checkpoint_signals cs
+          JOIN signals s ON s.id = cs.signal_id
+         WHERE cs.checkpoint_id = %s
+    )
+    SELECT
            s_exec.id, s_exec.name, s_exec.type, s_exec.method_of_call, s_exec.expression_body,
            s_exec.cost, s_exec.cache_expiration_seconds, s_exec.timeout_seconds,
            s_exec.can_run_in_parallel, s_exec.order_of_evaluation,
@@ -160,19 +166,23 @@ CHECKPOINT_SIGNAL_EXECUTION_SQL = """
            s_exec.request_body_template, s_exec.request_headers_template,
            s_exec.bearer_token, s_exec.allow_caching, s_exec.global_reuse,
            s_exec.function_params_template
-      FROM checkpoint_signals cs
-      JOIN signals s ON s.id = cs.signal_id
+      FROM linked_signal_names linked
       JOIN signal_current_version scv
-        ON scv.tenant_id = %s AND scv.name = s.name
+        ON scv.tenant_id = %s AND scv.name = linked.name
       JOIN signals s_exec
         ON s_exec.id = scv.signal_id
        AND s_exec.tenant_id = %s
-     WHERE cs.checkpoint_id = %s
-     ORDER BY s.name, s_exec.order_of_evaluation, s_exec.id
+     ORDER BY s_exec.order_of_evaluation, s_exec.name, s_exec.id
 """
 
 CHECKPOINT_SIGNAL_DETAILS_SQL = """
-    SELECT DISTINCT ON (s.name)
+    WITH linked_signal_names AS (
+        SELECT DISTINCT s.name
+          FROM checkpoint_signals cs
+          JOIN signals s ON s.id = cs.signal_id
+         WHERE cs.checkpoint_id = %s
+    )
+    SELECT
            s_exec.id, s_exec.tenant_id, s_exec.name, s_exec.description, s_exec.type,
            s_exec.method_of_call, s_exec.expression_body, s_exec.cost,
            s_exec.cache_expiration_seconds, s_exec.timeout_seconds,
@@ -181,15 +191,13 @@ CHECKPOINT_SIGNAL_DETAILS_SQL = """
            s_exec.request_body_template, s_exec.request_headers_template,
            s_exec.bearer_token, s_exec.allow_caching, s_exec.global_reuse,
            s_exec.function_params_template
-      FROM checkpoint_signals cs
-      JOIN signals s ON s.id = cs.signal_id
+      FROM linked_signal_names linked
       JOIN signal_current_version scv
-        ON scv.tenant_id = %s AND scv.name = s.name
+        ON scv.tenant_id = %s AND scv.name = linked.name
       JOIN signals s_exec
         ON s_exec.id = scv.signal_id
        AND s_exec.tenant_id = %s
-     WHERE cs.checkpoint_id = %s
-     ORDER BY s.name, s_exec.order_of_evaluation, s_exec.id
+     ORDER BY s_exec.order_of_evaluation, s_exec.name, s_exec.id
 """
 
 
@@ -237,14 +245,14 @@ def fetch_current_checkpoint_row(cur: cursor, tenant_id: str, checkpoint_name: s
 def fetch_executable_signal_rows(
     cur: cursor, tenant_id: str, checkpoint_id: str
 ) -> List[ExecutableSignalRow]:
-    cur.execute(CHECKPOINT_SIGNAL_EXECUTION_SQL, (tenant_id, tenant_id, checkpoint_id))
+    cur.execute(CHECKPOINT_SIGNAL_EXECUTION_SQL, (checkpoint_id, tenant_id, tenant_id))
     return [ExecutableSignalRow.from_db(row) for row in cur.fetchall()]
 
 
 def fetch_checkpoint_signal_details(
     cur: cursor, tenant_id: str, checkpoint_id: str
 ) -> List[SignalDetailRow]:
-    cur.execute(CHECKPOINT_SIGNAL_DETAILS_SQL, (tenant_id, tenant_id, checkpoint_id))
+    cur.execute(CHECKPOINT_SIGNAL_DETAILS_SQL, (checkpoint_id, tenant_id, tenant_id))
     return [SignalDetailRow.from_db(row) for row in cur.fetchall()]
 
 

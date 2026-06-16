@@ -13,6 +13,9 @@ export const signalsApi = {
   list(params: SignalListParams) {
     return httpJson<Paginated<Signal>>(`/ui/signals${buildQuery(params)}`);
   },
+  listAll(params: Omit<SignalListParams, "page" | "size"> = {}) {
+    return httpJson<Signal[]>(`/ui/all_signals${buildQuery(params)}`);
+  },
   search(params: SignalListParams & { q: string }) {
     return httpJson<Paginated<Signal>>(`/ui/search_signals${buildQuery(params)}`);
   },

@@ -151,14 +151,12 @@ export const useAssociationStore = defineStore("association", {
       const tenantId = requireTenantId();
       if (!tenantId) return;
       try {
-        const data = await signalsApi.list({
-          page: 1,
-          size: 9999,
+        const items = await signalsApi.listAll({
           tenant_id: tenantId,
           checkpoint_id: checkpointId,
         });
         this.checkpointMap[checkpointId] = {
-          signals: data.items.map((s) => ({ id: s.id, name: s.name })),
+          signals: items.map((s) => ({ id: s.id, name: s.name })),
         };
       } catch (err) {
         useAuthStore().handleApiError(err);
@@ -169,13 +167,12 @@ export const useAssociationStore = defineStore("association", {
       const tenantId = requireTenantId();
       if (!tenantId) return;
       try {
-        const assoc = await associationsApi.list({
+        const assoc = await associationsApi.listAll({
           tenant_id: tenantId,
           signal_id: signalId,
-          size: 9999,
         });
         this.signalMap[signalId] = {
-          checkpoints: assoc.items.map((row) => ({
+          checkpoints: assoc.map((row) => ({
             id: row.checkpoint_id,
             name: row.checkpoint_name || row.checkpoint_id,
           })),

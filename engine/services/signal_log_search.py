@@ -95,7 +95,13 @@ def search_signal_logs(
     offset = (page - 1) * size
     cur.execute(
         f"""
-        {matched_cte}
+        {matched_cte},
+        paged AS (
+            SELECT id, started_at
+              FROM matched
+          ORDER BY started_at DESC, id
+             LIMIT %s OFFSET %s
+        )
         SELECT sl.id,
                sl.decision_log_id,
                sl.signal_id,
@@ -109,12 +115,11 @@ def search_signal_logs(
                sig.name AS signal_name,
                slv.param_name,
                slv.param_value
-          FROM matched m
-          JOIN signal_log sl ON sl.id = m.id
+          FROM paged p
+          JOIN signal_log sl ON sl.id = p.id
      LEFT JOIN signals sig ON sig.id = sl.signal_id
      LEFT JOIN signal_log_values slv ON sl.id = slv.signal_log_id
-      ORDER BY m.started_at DESC, sl.id
-         LIMIT %s OFFSET %s
+      ORDER BY p.started_at DESC, sl.id, slv.param_name
         """,
         [*params, size, offset],
     )

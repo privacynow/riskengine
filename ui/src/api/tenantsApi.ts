@@ -5,6 +5,9 @@ export const tenantsApi = {
   list(page: number, size: number) {
     return httpJson<Paginated<Tenant>>(`/ui/tenants${buildQuery({ page, size })}`);
   },
+  listAll() {
+    return httpJson<Tenant[]>("/ui/all_tenants");
+  },
   search(q: string, page: number, size: number) {
     return httpJson<Paginated<Tenant>>(
       `/ui/search_tenants${buildQuery({ q, page, size })}`

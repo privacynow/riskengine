@@ -106,17 +106,15 @@ export const useCheckpointStore = defineStore("checkpoint", {
       const tenantId = requireTenantId();
       if (!tenantId) return;
       try {
-        const data = await signalsApi.list({
-          page: 1,
-          size: 9999,
+        const items = await signalsApi.listAll({
           tenant_id: tenantId,
           checkpoint_id: checkpointId,
         });
         if (this.selectedId === checkpointId) {
-          this.detailDraft.associatedSignals = data.items;
+          this.detailDraft.associatedSignals = items;
         }
         if (this.edits[checkpointId]) {
-          this.edits[checkpointId].associatedSignals = data.items;
+          this.edits[checkpointId].associatedSignals = items;
         }
       } catch (err) {
         useAuthStore().handleApiError(err);
@@ -463,20 +461,18 @@ export const useCheckpointStore = defineStore("checkpoint", {
       const cp = this.selectedCheckpoint;
       if (!cp) return;
       try {
-        const current = await signalsApi.list({
-          page: 1,
-          size: 9999,
+        const current = await signalsApi.listAll({
           tenant_id: cp.tenant_id,
           checkpoint_id: cp.id,
         });
         const desired = new Set(this.detailDraft.associatedSignals.map((s) => s.id));
-        const currentIds = new Set(current.items.map((s) => s.id));
+        const currentIds = new Set(current.map((s) => s.id));
         for (const sig of this.detailDraft.associatedSignals) {
           if (!currentIds.has(sig.id)) {
             await associationsApi.create({ checkpoint_id: cp.id, signal_id: sig.id });
           }
         }
-        for (const sig of current.items) {
+        for (const sig of current) {
           if (!desired.has(sig.id)) {
             await this.removeAssociation(cp.id, sig.id);
           }

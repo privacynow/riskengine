@@ -11,9 +11,14 @@ export type AssociationListParams = {
 
 export const associationsApi = {
   list(params: AssociationListParams = {}) {
-    const { page = 1, size = 9999, ...rest } = params;
+    const { page = 1, size = 10, ...rest } = params;
     return httpJson<Paginated<CheckpointSignal>>(
       `/ui/checkpoint_signals${buildQuery({ page, size, ...rest })}`
+    );
+  },
+  listAll(params: Omit<AssociationListParams, "page" | "size"> = {}) {
+    return httpJson<CheckpointSignal[]>(
+      `/ui/all_checkpoint_signals${buildQuery(params)}`
     );
   },
   create(payload: { checkpoint_id: string; signal_id: string }) {

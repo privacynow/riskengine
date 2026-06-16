@@ -28,7 +28,12 @@ from ..services.promotion_audit import (
 )
 from ..services.admin_responses import admin_mutation
 from ..services.decision import execute_decision
-from ..services.pagination import build_paginated_response, clamp_pagination, paginate_query
+from ..services.pagination import (
+    MAX_PAGE_SIZE,
+    build_paginated_response,
+    clamp_pagination,
+    paginate_query,
+)
 from ..services.resource_lifecycle import (
     assert_not_current_checkpoint,
     assert_not_current_signal,
@@ -61,6 +66,19 @@ def raise_admin_error(exc: Exception, *, context: str) -> None:
         raise exc
     logger.exception("%s", context)
     raise HTTPException(status_code=500, detail=GENERIC_ADMIN_ERROR) from exc
+
+
+def _collect_all_pages(fetch_page):
+    items = []
+    page = 1
+    while True:
+        result = fetch_page(page)
+        page_items = result["items"]
+        items.extend(page_items)
+        if not page_items or len(items) >= result["total"]:
+            return items
+        page += 1
+
 
 def _get_signal_tenant_id(cur, signal_id: str) -> str:
     cur.execute("SELECT tenant_id FROM signals WHERE id = %s", (signal_id,))
@@ -388,8 +406,18 @@ def _resolve_checkpoint_signal_ids(cur, payload: CheckpointCreateRequest) -> lis
         return []
     cur.execute(
         """
-        SELECT signal_id FROM checkpoint_signals
-         WHERE checkpoint_id = %s
+        SELECT DISTINCT ON (linked.name)
+               COALESCE(scv.signal_id, linked.signal_id)
+          FROM (
+                SELECT s.name, s.id AS signal_id, s.tenant_id, cs.created_at
+                  FROM checkpoint_signals cs
+                  JOIN signals s ON s.id = cs.signal_id
+                 WHERE cs.checkpoint_id = %s
+          ) linked
+     LEFT JOIN signal_current_version scv
+            ON scv.tenant_id = linked.tenant_id
+           AND scv.name = linked.name
+      ORDER BY linked.name, linked.created_at DESC
         """,
         (payload.copy_from_checkpoint_id,),
     )
@@ -416,6 +444,35 @@ def _assert_signals_same_tenant(cur, tenant_id: str, signal_ids: list[str]) -> N
         )
 
 
+def _assert_unique_logical_signal_names(cur, signal_ids: list[str]) -> None:
+    if not signal_ids:
+        return
+    if len(signal_ids) != len(set(signal_ids)):
+        raise HTTPException(
+            status_code=409,
+            detail="Checkpoint cannot link the same signal more than once.",
+        )
+    cur.execute(
+        """
+        SELECT name
+          FROM signals
+         WHERE id = ANY(%s::uuid[])
+         GROUP BY name
+        HAVING COUNT(*) > 1
+        """,
+        (signal_ids,),
+    )
+    duplicates = [row[0] for row in cur.fetchall()]
+    if duplicates:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Checkpoint cannot link multiple versions of the same signal: "
+                + ", ".join(sorted(duplicates))
+            ),
+        )
+
+
 @router.post("/ui/checkpoints")
 def create_checkpoint(payload: CheckpointCreateRequest):
     conn = get_db_connection()
@@ -424,6 +481,7 @@ def create_checkpoint(payload: CheckpointCreateRequest):
     try:
         signal_ids = _resolve_checkpoint_signal_ids(cur, payload)
         _assert_signals_same_tenant(cur, payload.tenant_id, signal_ids)
+        _assert_unique_logical_signal_names(cur, signal_ids)
         _validate_checkpoint_dsl(payload.dsl_expression, signal_ids, cur)
 
         cur.execute(
@@ -555,7 +613,7 @@ def list_tenants(page: int = 1, size: int = 10):
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        base_query = "SELECT id, name FROM tenants"
+        base_query = "SELECT id, name FROM tenants ORDER BY name ASC, id ASC"
         total, rows, page, size = paginate_query(cur, base_query, (), page, size)
         items = []
         for r in rows:
@@ -569,7 +627,9 @@ def list_tenants(page: int = 1, size: int = 10):
 @router.get("/ui/all_tenants")
 def list_all_tenants():
     """Unpaginated tenant list for dropdowns and bulk admin views."""
-    return list_tenants(page=1, size=10000)["items"]
+    return _collect_all_pages(
+        lambda page: list_tenants(page=page, size=MAX_PAGE_SIZE)
+    )
 
 
 @router.get("/ui/tenants/{tenant_id}")
@@ -726,16 +786,18 @@ def list_checkpoints(tenant_id: OptionalUuidStr = None, page: int = 1, size: int
 
 @router.get("/ui/all_checkpoints")
 def list_all_checkpoints(
-    tenant_id: Optional[str] = None,
+    tenant_id: OptionalUuidStr = None,
     active_only: bool = False,
 ):
     """Unpaginated checkpoint list for dropdowns and bulk admin views."""
-    return list_checkpoints(
-        tenant_id=tenant_id,
-        page=1,
-        size=10000,
-        active_only=active_only,
-    )["items"]
+    return _collect_all_pages(
+        lambda page: list_checkpoints(
+            tenant_id=tenant_id,
+            page=page,
+            size=MAX_PAGE_SIZE,
+            active_only=active_only,
+        )
+    )
 
 
 @router.get("/ui/checkpoints/{checkpoint_id}")
@@ -907,18 +969,20 @@ def list_signals(
 
 @router.get("/ui/all_signals")
 def list_all_signals(
-    tenant_id: Optional[str] = None,
-    checkpoint_id: Optional[str] = None,
+    tenant_id: OptionalUuidStr = None,
+    checkpoint_id: OptionalUuidStr = None,
     active_only: bool = False,
 ):
     """Unpaginated signal list for dropdowns and bulk admin views."""
-    return list_signals(
-        checkpoint_id=checkpoint_id,
-        tenant_id=tenant_id,
-        page=1,
-        size=10000,
-        active_only=active_only,
-    )["items"]
+    return _collect_all_pages(
+        lambda page: list_signals(
+            checkpoint_id=checkpoint_id,
+            tenant_id=tenant_id,
+            page=page,
+            size=MAX_PAGE_SIZE,
+            active_only=active_only,
+        )
+    )
 
 
 @router.get("/ui/signals/{signal_id}")
@@ -1197,9 +1261,9 @@ def delete_checkpoint_signal(checkpoint_signal_id: UuidStr):
 def list_checkpoint_signals(
     page: int = 1,
     size: int = 10,
-    tenant_id: Optional[str] = None,
-    checkpoint_id: Optional[str] = None,
-    signal_id: Optional[str] = None,
+    tenant_id: OptionalUuidStr = None,
+    checkpoint_id: OptionalUuidStr = None,
+    signal_id: OptionalUuidStr = None,
 ):
     conn = None
     try:
@@ -1225,6 +1289,7 @@ def list_checkpoint_signals(
             params.append(signal_id)
         if where_parts:
             base_query += " WHERE " + " AND ".join(where_parts)
+        base_query += " ORDER BY c.name ASC, s.name ASC, cs.id ASC"
         total, rows, page, size = paginate_query(cur, base_query, tuple(params), page, size)
         items = []
         for r in rows:
@@ -1241,6 +1306,24 @@ def list_checkpoint_signals(
     finally:
         if conn:
             conn.close()
+
+
+@router.get("/ui/all_checkpoint_signals")
+def list_all_checkpoint_signals(
+    tenant_id: OptionalUuidStr = None,
+    checkpoint_id: OptionalUuidStr = None,
+    signal_id: OptionalUuidStr = None,
+):
+    """Unpaginated checkpoint/signal associations for detail panels."""
+    return _collect_all_pages(
+        lambda page: list_checkpoint_signals(
+            page=page,
+            size=MAX_PAGE_SIZE,
+            tenant_id=tenant_id,
+            checkpoint_id=checkpoint_id,
+            signal_id=signal_id,
+        )
+    )
 
 
 @router.get("/ui/search_tenants")

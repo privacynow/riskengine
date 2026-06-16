@@ -1,10 +1,10 @@
 -- Test-only visual regression fixture. Apply via scripts/seed_visual_fixture.sh.
 
 INSERT INTO tenants (id, name)
-SELECT 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'HARBOR CREDIT TESTING'
-WHERE NOT EXISTS (
-  SELECT 1 FROM tenants WHERE id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
-);
+VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'VISUAL FIXTURE BANK')
+ON CONFLICT (id) DO UPDATE
+   SET name = EXCLUDED.name,
+       updated_at = NOW();
 
 INSERT INTO checkpoints (
     id, tenant_id, name, description, type, dsl_expression, method_of_call,

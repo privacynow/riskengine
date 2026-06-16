@@ -269,19 +269,18 @@ export const useSignalStore = defineStore("signal", {
       const tenantId = requireTenantId();
       if (!tenantId) return;
       try {
-        const assoc = await associationsApi.list({
+        const assoc = await associationsApi.listAll({
           tenant_id: tenantId,
           signal_id: signalId,
-          size: 9999,
         });
         if (this.edits[signalId]) {
-          this.edits[signalId].associatedCheckpoints = assoc.items.map((row) => ({
+          this.edits[signalId].associatedCheckpoints = assoc.map((row) => ({
             id: row.checkpoint_id,
             name: row.checkpoint_name || row.checkpoint_id,
           }));
         }
         if (this.selectedId === signalId) {
-          this.detailAssociatedCheckpoints = assoc.items.map((row) => ({
+          this.detailAssociatedCheckpoints = assoc.map((row) => ({
             id: row.checkpoint_id,
             name: row.checkpoint_name || row.checkpoint_id,
           }));
