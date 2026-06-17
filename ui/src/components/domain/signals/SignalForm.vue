@@ -120,10 +120,19 @@
     </FormSection>
 
     <FormSection v-if="!createNew" title="Versioning & promotion" subtitle="Promotion requires an audited reason">
-      <p class="field-hint">
-        Saving creates a new signal version. Promote from the signal list with a required reason —
-        promotion is enforced server-side and recorded in the audit log.
-      </p>
+      <div class="rule-authoring-panel">
+        <p class="field-hint">
+          Saving creates a new signal version. Promote from the signal list with a required reason —
+          promotion is enforced server-side and recorded in the audit log.
+        </p>
+        <dl v-if="local.id" class="detail-list detail-list--compact">
+          <div><dt>Signal ID</dt><dd class="text-mono">{{ local.id }}</dd></div>
+          <div v-if="local.type === 'expression'">
+            <dt>Current expression</dt>
+            <dd class="text-mono rule-authoring-diff">{{ local.expression_body || "—" }}</dd>
+          </div>
+        </dl>
+      </div>
     </FormSection>
 
     <div class="form-actions">

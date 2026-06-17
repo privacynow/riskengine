@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends
 
 from ...auth import AuthContext, require_permission, resolve_admin_tenant_id
-from ...db import db_cursor
 from ...models import AdminTestDecisionRequest, DecisionRequest, DecisionResponse
 from ...services.decision import execute_decision
 
@@ -20,12 +19,9 @@ async def admin_test_decision(
         correlation_id=payload.correlation_id,
         parameters=payload.parameters,
     )
-    with db_cursor() as (conn, cur):
-        return await execute_decision(
-            conn,
-            cur,
-            payload.tenant_id,
-            decision_request,
-            actor_id=auth.actor_id,
-            checkpoint_id=payload.checkpoint_id,
-        )
+    return await execute_decision(
+        payload.tenant_id,
+        decision_request,
+        actor_id=auth.actor_id,
+        checkpoint_id=payload.checkpoint_id,
+    )

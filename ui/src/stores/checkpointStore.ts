@@ -37,9 +37,11 @@ export const useCheckpointStore = defineStore("checkpoint", {
     signalCandidateTotalPages: {} as Record<string, number>,
     expandedCandidate: {} as Record<string, Record<string, boolean>>,
     selectedId: null as string | null,
-    detailTab: "summary" as "summary" | "dsl" | "signals" | "runtime" | "config",
+    detailTab: "summary" as "summary" | "config" | "versions" | "signals" | "dsl" | "runtime",
     detailDraft: emptyCheckpointDraft(),
     detailCheckpoint: null as Checkpoint | null,
+    versionHistory: [] as Checkpoint[],
+    versionHistoryLoading: false,
   }),
   getters: {
     selectedCheckpoint(state): Checkpoint | undefined {
@@ -82,9 +84,23 @@ export const useCheckpointStore = defineStore("checkpoint", {
         this.detailCheckpoint = fromList;
         this.detailDraft = checkpointToDraft(fromList);
         void this.loadDetailAssociations(id);
+        void this.loadVersionHistory(id);
         return;
       }
       await this.loadCheckpointDetail(id);
+    },
+
+    async loadVersionHistory(checkpointId: string) {
+      this.versionHistoryLoading = true;
+      try {
+        const data = await checkpointsApi.listVersions(checkpointId);
+        this.versionHistory = data.items;
+      } catch (err) {
+        useAuthStore().handleApiError(err);
+        this.versionHistory = [];
+      } finally {
+        this.versionHistoryLoading = false;
+      }
     },
 
     async loadCheckpointDetail(id: string) {
@@ -96,6 +112,7 @@ export const useCheckpointStore = defineStore("checkpoint", {
           this.items = [cp, ...this.items];
         }
         void this.loadDetailAssociations(id);
+        void this.loadVersionHistory(id);
       } catch (err) {
         this.detailCheckpoint = null;
         useAuthStore().handleApiError(err);
@@ -349,8 +366,8 @@ export const useCheckpointStore = defineStore("checkpoint", {
     },
 
     async setCurrentVersion(checkpointId: string) {
-      const cp = this.items.find((c) => c.id === checkpointId);
-      if (!cp) return;
+      const cp = this.selectedCheckpoint ?? this.items.find((c) => c.id === checkpointId);
+      if (!cp || cp.id !== checkpointId) return;
       const { promote } = usePromoteDialog();
       const reason = await promote({
         title: "Promote checkpoint version",
@@ -365,6 +382,8 @@ export const useCheckpointStore = defineStore("checkpoint", {
         await this.loadAll(this.page);
         if (this.selectedId === checkpointId) {
           await this.selectCheckpoint(checkpointId);
+        } else {
+          void this.loadVersionHistory(checkpointId);
         }
         useUiStore().notify("Current checkpoint version updated.");
       } catch (err) {
@@ -373,8 +392,8 @@ export const useCheckpointStore = defineStore("checkpoint", {
     },
 
     async deactivateVersion(checkpointId: string) {
-      const cp = this.items.find((c) => c.id === checkpointId);
-      if (!cp?.is_current_version) return;
+      const cp = this.selectedCheckpoint ?? this.items.find((c) => c.id === checkpointId);
+      if (!cp || cp.id !== checkpointId || !cp.is_current_version) return;
       const { promote } = usePromoteDialog();
       const reason = await promote({
         title: "Deactivate checkpoint",
@@ -388,6 +407,8 @@ export const useCheckpointStore = defineStore("checkpoint", {
         await this.loadAll(this.page);
         if (this.selectedId === checkpointId) {
           await this.selectCheckpoint(checkpointId);
+        } else {
+          void this.loadVersionHistory(checkpointId);
         }
         useUiStore().notify("Checkpoint deactivated.");
       } catch (err) {
@@ -396,8 +417,15 @@ export const useCheckpointStore = defineStore("checkpoint", {
     },
 
     async reactivateVersion(checkpointId: string) {
-      const cp = this.items.find((c) => c.id === checkpointId);
-      if (!cp || cp.is_current_version || cp.name_has_current_version !== false) return;
+      const cp = this.selectedCheckpoint ?? this.items.find((c) => c.id === checkpointId);
+      if (
+        !cp ||
+        cp.id !== checkpointId ||
+        cp.is_current_version ||
+        cp.name_has_current_version !== false
+      ) {
+        return;
+      }
       const { promote } = usePromoteDialog();
       const reason = await promote({
         title: "Reactivate checkpoint",
@@ -411,6 +439,8 @@ export const useCheckpointStore = defineStore("checkpoint", {
         await this.loadAll(this.page);
         if (this.selectedId === checkpointId) {
           await this.selectCheckpoint(checkpointId);
+        } else {
+          void this.loadVersionHistory(checkpointId);
         }
         useUiStore().notify("Checkpoint reactivated.");
       } catch (err) {

@@ -1,5 +1,9 @@
 <template>
-  <div class="list-row entity-table-row list-row--workbench" :class="{ selected }">
+  <div
+    class="list-row entity-table-row list-row--workbench"
+    :class="{ selected }"
+    :data-testid="`checkpoint-row-${checkpoint.id}`"
+  >
     <StatusBadge
       :variant="checkpoint.is_current_version ? 'current' : 'inactive'"
       :text="checkpoint.is_current_version ? 'Current' : 'Inactive'"
@@ -24,6 +28,7 @@
         v-if="showPromote"
         type="button"
         class="btn-secondary btn-sm list-row-promote"
+        data-testid="checkpoint-promote"
         @click="$emit('promote')"
       >
         Promote
@@ -32,6 +37,7 @@
         v-else-if="showReactivate"
         type="button"
         class="btn-secondary btn-sm list-row-promote"
+        data-testid="checkpoint-reactivate"
         @click="$emit('reactivate')"
       >
         Reactivate
@@ -40,6 +46,7 @@
         v-else-if="showDeactivate"
         type="button"
         class="btn-secondary btn-sm list-row-promote"
+        data-testid="checkpoint-deactivate"
         @click="$emit('deactivate')"
       >
         Deactivate

@@ -48,21 +48,51 @@ CI runs both gates. Dev toolchain was upgraded (Vite 8, Vitest 4, Playwright 1.6
 
 `SMOKE_ADMIN_TOKEN` in `.env.local` is set by `scripts/create_demo_env.sh`. Playwright `baseURL` is `http://localhost:8000` (override with `BASE_URL`).
 
-`scripts/ui_smoke.sh` runs a separate browser workflow check via `scripts/ui_browser_smoke.mjs`. CI runs scripts audit, UI smoke, then Playwright e2e (scrubbed env; see above).
+`scripts/ui_smoke.sh` runs a separate browser workflow check via `scripts/ui_browser_smoke.mjs`.
 
-## Visual regression policy
+### CI Playwright policy
+
+**Blocking on main CI** (`scripts/run_playwright_blocking_ci.sh`):
+
+- `auth-and-tenant.spec.ts` — auth, tenant routing, structural layout contracts
+- `workflow-lifecycle.spec.ts` — workflow execution across libraries, test lab, audit
+- `lifecycle-actions.spec.ts` — checkpoint deactivate/reactivate on the lifecycle fixture
+
+**Non-blocking** (`scripts/run_playwright_visual_ci.sh`, separate CI job with `continue-on-error`):
+
+- `visual-review.spec.ts` — pixel snapshots for human review; failures do not block merge
+
+Run locally:
+
+```bash
+bash scripts/run_playwright_blocking_ci.sh
+bash scripts/run_playwright_visual_ci.sh          # optional visual review
+bash scripts/run_playwright_ci.sh                  # full suite
+```
+
+## Visual regression policy (non-blocking)
+
+Pixel snapshots are for **artifact review**, not merge gates, until targets and environments are more controlled.
 
 - Snapshots live under `src/tests/e2e/visual-review.spec.ts-snapshots/`.
-- Targets are **view roots** or **list cards** (`.workbench-list-card`), not full-page screenshots, to reduce font/wrap noise.
-- Deterministic data comes from `tests/fixtures/visual_fixture.sql` via `scripts/seed_visual_fixture.sh` and the `VISUAL FIXTURE BANK` tenant.
+- Run via `scripts/run_playwright_visual_ci.sh` or the `visual-review` CI job (uploads artifacts even on failure).
+- Deterministic data comes from `tests/fixtures/visual_fixture.sql` via `scripts/seed_visual_fixture.sh` and the `VISUAL FIXTURE BANK` tenant (`ui/src/tests/e2e/visual-fixture.ts` must stay aligned with the SQL).
+- **Audit promotions view:** search for `Seed promote` (the seed-only `promotion_reason`), not the checkpoint name.
 - Update snapshots only when UI changes are intentional:
 
 ```bash
+bash scripts/seed_visual_fixture.sh
 cd ui
 ./node_modules/.bin/playwright test visual-review.spec.ts --update-snapshots
 ```
 
-- Commit snapshot diffs with the UI change that caused them. Do not bulk-update snapshots to silence unrelated CI failures.
+- Prefer smaller stable targets and semantic assertions in blocking specs over widening snapshot thresholds.
+
+## Lifecycle e2e (blocking)
+
+- `src/tests/e2e/lifecycle-actions.spec.ts` targets **`Lifecycle E2E Checkpoint`** via search and `data-testid` row/actions (`lifecycle-fixture.ts` ↔ `tests/fixtures/lifecycle_e2e_fixture.sql`).
+- `beforeEach` / `afterEach` reset the fixture through the admin API (`lifecycle-cleanup.ts`).
+- Separate from **Fixture Checkpoint** used in visual snapshots.
 
 ## Source layout
 

@@ -74,7 +74,7 @@ SELECT
   'Compliance',
   'Document authenticity and sanctions screening for regulatory onboarding.',
   'compliance',
-  'doc_verification and sanction_screening',
+  '(doc_verification and sanction_screening) and not (blocklist_check)',
   'http://127.0.0.1:8000/mock/compliance',
   200,
   FALSE,
@@ -96,7 +96,7 @@ SELECT
   'Underwriting',
   'Credit eligibility, income verification, and requested amount limits.',
   'underwriting',
-  '(credit_score > 70) and income_verification and (loan_amount_check < 50000)',
+  'credit_pass and income_verification and (requested_loan_amount >= 5000) and (requested_loan_amount <= 50000)',
   'http://127.0.0.1:8000/mock/underwriting',
   300,
   FALSE,
@@ -118,7 +118,7 @@ SELECT
   'Funds Disbursement',
   'Disbursement readiness — limits and delinquency guardrails before funding.',
   'funds_disbursement',
-  'disbursement_limit_check and (previous_delinquency == 0)',
+  'disbursement_limit_check and (previous_delinquency == 0) and credit_pass',
   'http://127.0.0.1:8000/mock/disbursement',
   100,
   FALSE,
@@ -140,7 +140,7 @@ SELECT
   'Servicing',
   'Servicing intervention — active loan status and delinquency severity.',
   'servicing',
-  '(active_loan == TRUE) and (delinquent_severity < 60)',
+  'active_loan and (delinquent_severity < 60) and not (blocklist_check)',
   'http://127.0.0.1:8000/mock/servicing',
   50,
   FALSE,
@@ -610,6 +610,111 @@ WHERE NOT EXISTS (
      AND tenant_id = '11111111-1111-1111-1111-111111111111'
 );
 
+-- requested_loan_amount (variable)
+INSERT INTO signals (
+    id, tenant_id, name, description, type, method_of_call, expression_body,
+    cost, cache_expiration_seconds, timeout_seconds, can_run_in_parallel,
+    order_of_evaluation, http_method, request_url_params_template,
+    request_body_template, request_headers_template, bearer_token,
+    allow_caching, global_reuse, function_params_template
+)
+SELECT
+  '33333333-3333-3333-3333-333333333314',
+  '11111111-1111-1111-1111-111111111111',
+  'requested_loan_amount',
+  'Principal amount requested by the applicant for this product.',
+  'variable',
+  NULL,
+  NULL,
+  5,
+  300,
+  5,
+  TRUE,
+  1,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  TRUE,
+  FALSE,
+  NULL
+WHERE NOT EXISTS (
+  SELECT 1 FROM signals
+   WHERE name = 'requested_loan_amount'
+     AND tenant_id = '11111111-1111-1111-1111-111111111111'
+);
+
+-- kyc_pass (expression)
+INSERT INTO signals (
+    id, tenant_id, name, description, type, method_of_call, expression_body,
+    cost, cache_expiration_seconds, timeout_seconds, can_run_in_parallel,
+    order_of_evaluation, http_method, request_url_params_template,
+    request_body_template, request_headers_template, bearer_token,
+    allow_caching, global_reuse, function_params_template
+)
+SELECT
+  '33333333-3333-3333-3333-333333333315',
+  '11111111-1111-1111-1111-111111111111',
+  'kyc_pass',
+  'KYC composite score meets onboarding policy floor (≥ 80).',
+  'expression',
+  NULL,
+  'kyc_score >= 80',
+  5,
+  300,
+  5,
+  TRUE,
+  2,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  TRUE,
+  FALSE,
+  NULL
+WHERE NOT EXISTS (
+  SELECT 1 FROM signals
+   WHERE name = 'kyc_pass'
+     AND tenant_id = '11111111-1111-1111-1111-111111111111'
+);
+
+-- credit_pass (expression)
+INSERT INTO signals (
+    id, tenant_id, name, description, type, method_of_call, expression_body,
+    cost, cache_expiration_seconds, timeout_seconds, can_run_in_parallel,
+    order_of_evaluation, http_method, request_url_params_template,
+    request_body_template, request_headers_template, bearer_token,
+    allow_caching, global_reuse, function_params_template
+)
+SELECT
+  '33333333-3333-3333-3333-333333333316',
+  '11111111-1111-1111-1111-111111111111',
+  'credit_pass',
+  'Bureau score meets underwriting threshold (≥ 680).',
+  'expression',
+  NULL,
+  'credit_score >= 680',
+  5,
+  300,
+  5,
+  TRUE,
+  2,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  NULL,
+  TRUE,
+  FALSE,
+  NULL
+WHERE NOT EXISTS (
+  SELECT 1 FROM signals
+   WHERE name = 'credit_pass'
+     AND tenant_id = '11111111-1111-1111-1111-111111111111'
+);
+
 
 ---------------------------------------
 -- 4) Checkpoint ↔ signal associations (SAMPLE LENDING)
@@ -645,6 +750,16 @@ WHERE NOT EXISTS (
      AND signal_id = '33333333-3333-3333-3333-333333333307'
 );
 
+INSERT INTO checkpoint_signals (id, checkpoint_id, signal_id)
+SELECT uuid_generate_v4(),
+       '22222222-2222-2222-2222-222222222201',
+       '33333333-3333-3333-3333-333333333315'
+WHERE NOT EXISTS (
+  SELECT 1 FROM checkpoint_signals
+   WHERE checkpoint_id = '22222222-2222-2222-2222-222222222201'
+     AND signal_id = '33333333-3333-3333-3333-333333333315'
+);
+
 -- Compliance
 INSERT INTO checkpoint_signals (id, checkpoint_id, signal_id)
 SELECT uuid_generate_v4(),
@@ -664,6 +779,16 @@ WHERE NOT EXISTS (
   SELECT 1 FROM checkpoint_signals
    WHERE checkpoint_id = '22222222-2222-2222-2222-222222222202'
      AND signal_id = '33333333-3333-3333-3333-333333333306'
+);
+
+INSERT INTO checkpoint_signals (id, checkpoint_id, signal_id)
+SELECT uuid_generate_v4(),
+       '22222222-2222-2222-2222-222222222202',
+       '33333333-3333-3333-3333-333333333302'
+WHERE NOT EXISTS (
+  SELECT 1 FROM checkpoint_signals
+   WHERE checkpoint_id = '22222222-2222-2222-2222-222222222202'
+     AND signal_id = '33333333-3333-3333-3333-333333333302'
 );
 
 -- Underwriting
@@ -697,6 +822,26 @@ WHERE NOT EXISTS (
      AND signal_id = '33333333-3333-3333-3333-333333333310'
 );
 
+INSERT INTO checkpoint_signals (id, checkpoint_id, signal_id)
+SELECT uuid_generate_v4(),
+       '22222222-2222-2222-2222-222222222203',
+       '33333333-3333-3333-3333-333333333314'
+WHERE NOT EXISTS (
+  SELECT 1 FROM checkpoint_signals
+   WHERE checkpoint_id = '22222222-2222-2222-2222-222222222203'
+     AND signal_id = '33333333-3333-3333-3333-333333333314'
+);
+
+INSERT INTO checkpoint_signals (id, checkpoint_id, signal_id)
+SELECT uuid_generate_v4(),
+       '22222222-2222-2222-2222-222222222203',
+       '33333333-3333-3333-3333-333333333316'
+WHERE NOT EXISTS (
+  SELECT 1 FROM checkpoint_signals
+   WHERE checkpoint_id = '22222222-2222-2222-2222-222222222203'
+     AND signal_id = '33333333-3333-3333-3333-333333333316'
+);
+
 -- Funds Disbursement
 INSERT INTO checkpoint_signals (id, checkpoint_id, signal_id)
 SELECT uuid_generate_v4(),
@@ -716,6 +861,16 @@ WHERE NOT EXISTS (
   SELECT 1 FROM checkpoint_signals
    WHERE checkpoint_id = '22222222-2222-2222-2222-222222222204'
      AND signal_id = '33333333-3333-3333-3333-333333333303'
+);
+
+INSERT INTO checkpoint_signals (id, checkpoint_id, signal_id)
+SELECT uuid_generate_v4(),
+       '22222222-2222-2222-2222-222222222204',
+       '33333333-3333-3333-3333-333333333316'
+WHERE NOT EXISTS (
+  SELECT 1 FROM checkpoint_signals
+   WHERE checkpoint_id = '22222222-2222-2222-2222-222222222204'
+     AND signal_id = '33333333-3333-3333-3333-333333333316'
 );
 
 -- Servicing
@@ -747,6 +902,16 @@ WHERE NOT EXISTS (
   SELECT 1 FROM checkpoint_signals
    WHERE checkpoint_id = '22222222-2222-2222-2222-222222222205'
      AND signal_id = '33333333-3333-3333-3333-333333333313'
+);
+
+INSERT INTO checkpoint_signals (id, checkpoint_id, signal_id)
+SELECT uuid_generate_v4(),
+       '22222222-2222-2222-2222-222222222205',
+       '33333333-3333-3333-3333-333333333302'
+WHERE NOT EXISTS (
+  SELECT 1 FROM checkpoint_signals
+   WHERE checkpoint_id = '22222222-2222-2222-2222-222222222205'
+     AND signal_id = '33333333-3333-3333-3333-333333333302'
 );
 
 
@@ -806,6 +971,19 @@ WHERE NOT EXISTS (
      AND name = 'active_loan'
 );
 
+-- requested_loan_amount — typical personal loan request within product band
+INSERT INTO signal_variable_values (id, signal_id, name, value)
+SELECT
+  uuid_generate_v4(),
+  '33333333-3333-3333-3333-333333333314',
+  'requested_loan_amount',
+  '35000'
+WHERE NOT EXISTS (
+  SELECT 1 FROM signal_variable_values
+   WHERE signal_id = '33333333-3333-3333-3333-333333333314'
+     AND name = 'requested_loan_amount'
+);
+
 ---------------------------------------
 -- 6) Demo tenant: OTHER BANK — stricter onboarding policy
 -- Same checkpoint name as SAMPLE LENDING; different tenant policy and outcome.
@@ -826,7 +1004,7 @@ SELECT
   'Onboarding',
   'Premium onboarding — stricter identity, sanctions, credit, and affordability gates.',
   'onboarding',
-  'identity_verified and sanctions_clear and credit_score >= 740 and debt_to_income_ratio < 0.35',
+  'identity_verified and sanctions_clear and (credit_score >= 740) and affordability_pass',
   NULL,
   100,
   FALSE,
@@ -906,6 +1084,33 @@ WHERE NOT EXISTS (
      AND name = 'debt_to_income_ratio'
 );
 
+-- affordability_pass (expression — compositional gate on DTI variable)
+INSERT INTO signals (
+    id, tenant_id, name, description, type, method_of_call, expression_body,
+    cost, cache_expiration_seconds, timeout_seconds, can_run_in_parallel,
+    order_of_evaluation, allow_caching, global_reuse
+)
+SELECT
+  '88888888-8888-8888-8888-888888888806',
+  '99999999-9999-9999-9999-999999999999',
+  'affordability_pass',
+  'Debt-to-income ratio within premium onboarding cap (< 35%).',
+  'expression',
+  NULL,
+  'debt_to_income_ratio < 0.35',
+  5,
+  300,
+  5,
+  TRUE,
+  3,
+  TRUE,
+  FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM signals
+   WHERE tenant_id = '99999999-9999-9999-9999-999999999999'
+     AND name = 'affordability_pass'
+);
+
 INSERT INTO signal_variable_values (id, signal_id, name, value)
 SELECT uuid_generate_v4(), '88888888-8888-8888-8888-888888888802', 'identity_verified', 'True'
 WHERE NOT EXISTS (
@@ -970,6 +1175,14 @@ WHERE NOT EXISTS (
      AND signal_id = '88888888-8888-8888-8888-888888888805'
 );
 
+INSERT INTO checkpoint_signals (id, checkpoint_id, signal_id)
+SELECT uuid_generate_v4(), '88888888-8888-8888-8888-888888888801', '88888888-8888-8888-8888-888888888806'
+WHERE NOT EXISTS (
+  SELECT 1 FROM checkpoint_signals
+   WHERE checkpoint_id = '88888888-8888-8888-8888-888888888801'
+     AND signal_id = '88888888-8888-8888-8888-888888888806'
+);
+
 INSERT INTO signal_current_version (tenant_id, name, signal_id)
 SELECT '99999999-9999-9999-9999-999999999999', 'identity_verified', '88888888-8888-8888-8888-888888888802'
 WHERE NOT EXISTS (
@@ -1000,6 +1213,14 @@ WHERE NOT EXISTS (
   SELECT 1 FROM signal_current_version
    WHERE tenant_id = '99999999-9999-9999-9999-999999999999'
      AND name = 'debt_to_income_ratio'
+);
+
+INSERT INTO signal_current_version (tenant_id, name, signal_id)
+SELECT '99999999-9999-9999-9999-999999999999', 'affordability_pass', '88888888-8888-8888-8888-888888888806'
+WHERE NOT EXISTS (
+  SELECT 1 FROM signal_current_version
+   WHERE tenant_id = '99999999-9999-9999-9999-999999999999'
+     AND name = 'affordability_pass'
 );
 
 INSERT INTO checkpoint_current_version (tenant_id, name, checkpoint_id)
@@ -1053,6 +1274,100 @@ WHERE NOT EXISTS (
    WHERE id = '44444444-4444-4444-4444-444444444444'
 );
 
+INSERT INTO decision_log (
+  id, checkpoint_id, tenant_id, applicant_id,
+  final_decision_value, cost_incurred, correlation_id, decision_timestamp
+)
+SELECT
+  '44444444-4444-4444-4444-444444444445',
+  '22222222-2222-2222-2222-222222222201',
+  '11111111-1111-1111-1111-111111111111',
+  'demo-applicant-2099',
+  'False',
+  42,
+  'demo-onboarding-declined',
+  NOW() - INTERVAL '6 hours'
+WHERE NOT EXISTS (
+  SELECT 1 FROM decision_log
+   WHERE id = '44444444-4444-4444-4444-444444444445'
+);
+
+INSERT INTO signal_log (
+  id, decision_log_id, signal_id, applicant_id,
+  signal_value, started_at, completed_at, cost_incurred, success
+)
+SELECT
+  '55555555-5555-5555-5555-555555555501',
+  '44444444-4444-4444-4444-444444444444',
+  '33333333-3333-3333-3333-333333333307',
+  'demo-applicant-1042',
+  '85',
+  NOW() - INTERVAL '2 hours',
+  NOW() - INTERVAL '2 hours' + INTERVAL '120 milliseconds',
+  30,
+  TRUE
+WHERE NOT EXISTS (
+  SELECT 1 FROM signal_log WHERE id = '55555555-5555-5555-5555-555555555501'
+);
+
+INSERT INTO signal_log (
+  id, decision_log_id, signal_id, applicant_id,
+  signal_value, started_at, completed_at, cost_incurred, success, error_message
+)
+SELECT
+  '55555555-5555-5555-5555-555555555502',
+  '44444444-4444-4444-4444-444444444445',
+  '33333333-3333-3333-3333-333333333302',
+  'demo-applicant-2099',
+  'True',
+  NOW() - INTERVAL '6 hours',
+  NOW() - INTERVAL '6 hours' + INTERVAL '5 milliseconds',
+  10,
+  TRUE,
+  NULL
+WHERE NOT EXISTS (
+  SELECT 1 FROM signal_log WHERE id = '55555555-5555-5555-5555-555555555502'
+);
+
+INSERT INTO promotion_audit (
+  id, tenant_id, resource_type, resource_id, resource_name,
+  actor_id, promotion_reason, action, source, created_at
+)
+SELECT
+  '66666666-6666-6666-6666-666666666601',
+  '11111111-1111-1111-1111-111111111111',
+  'checkpoint',
+  '22222222-2222-2222-2222-222222222201',
+  'Onboarding',
+  'demo-admin',
+  'Initial demo seed promotion for onboarding policy.',
+  'promote',
+  'seed',
+  NOW() - INTERVAL '30 days'
+WHERE NOT EXISTS (
+  SELECT 1 FROM promotion_audit WHERE id = '66666666-6666-6666-6666-666666666601'
+);
+
+INSERT INTO checkpoints (
+    id, tenant_id, name, description, type, dsl_expression, method_of_call,
+    max_cost, override_cost_flag, timeout_seconds, updated_at
+)
+SELECT
+  '22222222-2222-2222-2222-222222222299',
+  '11111111-1111-1111-1111-111111111111',
+  'Onboarding',
+  'Superseded onboarding policy — lower KYC threshold (demo version history).',
+  'onboarding',
+  'age_check and not (blocklist_check) and (kyc_score > 70)',
+  'http://127.0.0.1:8000/mock/onboarding',
+  100,
+  FALSE,
+  30,
+  NOW() - INTERVAL '90 days'
+WHERE NOT EXISTS (
+  SELECT 1 FROM checkpoints WHERE id = '22222222-2222-2222-2222-222222222299'
+);
+
 ---------------------------------------
 -- 9) Inactive signal — linked but not current (strict resolution demo)
 ---------------------------------------
@@ -1068,7 +1383,7 @@ SELECT
   'Linked to Onboarding but excluded from signal_current_version; must not execute.',
   'expression',
   NULL,
-  'False',
+  'blocklist_check and (kyc_score < 50)',
   1,
   0,
   30,
@@ -1091,30 +1406,182 @@ WHERE NOT EXISTS (
 
 ---------------------------------------
 -- 10) Demo policy refresh (UPDATE existing rows on re-apply)
+-- Re-run this section against a live volume to upgrade DSL without docker down -v.
 ---------------------------------------
+
+-- Ensure compositional signals exist on volumes created before this seed revision
+INSERT INTO signals (
+    id, tenant_id, name, description, type, method_of_call, expression_body,
+    cost, cache_expiration_seconds, timeout_seconds, can_run_in_parallel,
+    order_of_evaluation, allow_caching, global_reuse
+)
+SELECT
+  '33333333-3333-3333-3333-333333333314',
+  '11111111-1111-1111-1111-111111111111',
+  'requested_loan_amount',
+  'Principal amount requested by the applicant for this product.',
+  'variable', NULL, NULL,
+  5, 300, 5, TRUE, 1, TRUE, FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM signals WHERE id = '33333333-3333-3333-3333-333333333314'
+);
+
+INSERT INTO signals (
+    id, tenant_id, name, description, type, method_of_call, expression_body,
+    cost, cache_expiration_seconds, timeout_seconds, can_run_in_parallel,
+    order_of_evaluation, allow_caching, global_reuse
+)
+SELECT
+  '33333333-3333-3333-3333-333333333315',
+  '11111111-1111-1111-1111-111111111111',
+  'kyc_pass',
+  'KYC composite score meets onboarding policy floor (≥ 80).',
+  'expression', NULL, 'kyc_score >= 80',
+  5, 300, 5, TRUE, 2, TRUE, FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM signals WHERE id = '33333333-3333-3333-3333-333333333315'
+);
+
+INSERT INTO signals (
+    id, tenant_id, name, description, type, method_of_call, expression_body,
+    cost, cache_expiration_seconds, timeout_seconds, can_run_in_parallel,
+    order_of_evaluation, allow_caching, global_reuse
+)
+SELECT
+  '33333333-3333-3333-3333-333333333316',
+  '11111111-1111-1111-1111-111111111111',
+  'credit_pass',
+  'Bureau score meets underwriting threshold (≥ 680).',
+  'expression', NULL, 'credit_score >= 680',
+  5, 300, 5, TRUE, 2, TRUE, FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM signals WHERE id = '33333333-3333-3333-3333-333333333316'
+);
+
+INSERT INTO signals (
+    id, tenant_id, name, description, type, method_of_call, expression_body,
+    cost, cache_expiration_seconds, timeout_seconds, can_run_in_parallel,
+    order_of_evaluation, allow_caching, global_reuse
+)
+SELECT
+  '88888888-8888-8888-8888-888888888806',
+  '99999999-9999-9999-9999-999999999999',
+  'affordability_pass',
+  'Debt-to-income ratio within premium onboarding cap (< 35%).',
+  'expression', NULL, 'debt_to_income_ratio < 0.35',
+  5, 300, 5, TRUE, 3, TRUE, FALSE
+WHERE NOT EXISTS (
+  SELECT 1 FROM signals WHERE id = '88888888-8888-8888-8888-888888888806'
+);
+
+INSERT INTO signal_variable_values (id, signal_id, name, value)
+SELECT uuid_generate_v4(), '33333333-3333-3333-3333-333333333314', 'requested_loan_amount', '35000'
+WHERE NOT EXISTS (
+  SELECT 1 FROM signal_variable_values
+   WHERE signal_id = '33333333-3333-3333-3333-333333333314'
+     AND name = 'requested_loan_amount'
+);
+
+INSERT INTO checkpoint_signals (id, checkpoint_id, signal_id)
+SELECT uuid_generate_v4(), '22222222-2222-2222-2222-222222222201', '33333333-3333-3333-3333-333333333315'
+WHERE NOT EXISTS (
+  SELECT 1 FROM checkpoint_signals
+   WHERE checkpoint_id = '22222222-2222-2222-2222-222222222201'
+     AND signal_id = '33333333-3333-3333-3333-333333333315'
+);
+
+INSERT INTO checkpoint_signals (id, checkpoint_id, signal_id)
+SELECT uuid_generate_v4(), '22222222-2222-2222-2222-222222222202', '33333333-3333-3333-3333-333333333302'
+WHERE NOT EXISTS (
+  SELECT 1 FROM checkpoint_signals
+   WHERE checkpoint_id = '22222222-2222-2222-2222-222222222202'
+     AND signal_id = '33333333-3333-3333-3333-333333333302'
+);
+
+INSERT INTO checkpoint_signals (id, checkpoint_id, signal_id)
+SELECT uuid_generate_v4(), '22222222-2222-2222-2222-222222222203', '33333333-3333-3333-3333-333333333314'
+WHERE NOT EXISTS (
+  SELECT 1 FROM checkpoint_signals
+   WHERE checkpoint_id = '22222222-2222-2222-2222-222222222203'
+     AND signal_id = '33333333-3333-3333-3333-333333333314'
+);
+
+INSERT INTO checkpoint_signals (id, checkpoint_id, signal_id)
+SELECT uuid_generate_v4(), '22222222-2222-2222-2222-222222222203', '33333333-3333-3333-3333-333333333316'
+WHERE NOT EXISTS (
+  SELECT 1 FROM checkpoint_signals
+   WHERE checkpoint_id = '22222222-2222-2222-2222-222222222203'
+     AND signal_id = '33333333-3333-3333-3333-333333333316'
+);
+
+INSERT INTO checkpoint_signals (id, checkpoint_id, signal_id)
+SELECT uuid_generate_v4(), '22222222-2222-2222-2222-222222222204', '33333333-3333-3333-3333-333333333316'
+WHERE NOT EXISTS (
+  SELECT 1 FROM checkpoint_signals
+   WHERE checkpoint_id = '22222222-2222-2222-2222-222222222204'
+     AND signal_id = '33333333-3333-3333-3333-333333333316'
+);
+
+INSERT INTO checkpoint_signals (id, checkpoint_id, signal_id)
+SELECT uuid_generate_v4(), '22222222-2222-2222-2222-222222222205', '33333333-3333-3333-3333-333333333302'
+WHERE NOT EXISTS (
+  SELECT 1 FROM checkpoint_signals
+   WHERE checkpoint_id = '22222222-2222-2222-2222-222222222205'
+     AND signal_id = '33333333-3333-3333-3333-333333333302'
+);
+
+INSERT INTO checkpoint_signals (id, checkpoint_id, signal_id)
+SELECT uuid_generate_v4(), '88888888-8888-8888-8888-888888888801', '88888888-8888-8888-8888-888888888806'
+WHERE NOT EXISTS (
+  SELECT 1 FROM checkpoint_signals
+   WHERE checkpoint_id = '88888888-8888-8888-8888-888888888801'
+     AND signal_id = '88888888-8888-8888-8888-888888888806'
+);
+
+INSERT INTO signal_current_version (tenant_id, name, signal_id)
+VALUES
+  ('11111111-1111-1111-1111-111111111111', 'requested_loan_amount', '33333333-3333-3333-3333-333333333314'),
+  ('11111111-1111-1111-1111-111111111111', 'kyc_pass', '33333333-3333-3333-3333-333333333315'),
+  ('11111111-1111-1111-1111-111111111111', 'credit_pass', '33333333-3333-3333-3333-333333333316'),
+  ('99999999-9999-9999-9999-999999999999', 'affordability_pass', '88888888-8888-8888-8888-888888888806')
+ON CONFLICT (tenant_id, name) DO UPDATE
+   SET signal_id = EXCLUDED.signal_id,
+       updated_at = NOW();
+
+-- SAMPLE LENDING checkpoint DSL + descriptions
 UPDATE checkpoints
-   SET description = 'Application intake — identity, watchlists, and KYC score before account opening.'
+   SET description = 'Application intake — identity, watchlists, and KYC score before account opening.',
+       dsl_expression = 'age_check and not (blocklist_check) and (kyc_score > 80)'
  WHERE id = '22222222-2222-2222-2222-222222222201';
 
 UPDATE checkpoints
-   SET description = 'Document authenticity and sanctions screening for regulatory onboarding.'
+   SET description = 'Document authenticity and sanctions screening for regulatory onboarding.',
+       dsl_expression = '(doc_verification and sanction_screening) and not (blocklist_check)'
  WHERE id = '22222222-2222-2222-2222-222222222202';
 
 UPDATE checkpoints
-   SET description = 'Credit eligibility, income verification, and requested amount limits.'
+   SET description = 'Credit eligibility, income verification, and requested amount limits.',
+       dsl_expression = 'credit_pass and income_verification and (requested_loan_amount >= 5000) and (requested_loan_amount <= 50000)'
  WHERE id = '22222222-2222-2222-2222-222222222203';
 
 UPDATE checkpoints
-   SET description = 'Disbursement readiness — limits and delinquency guardrails before funding.'
+   SET description = 'Disbursement readiness — limits and delinquency guardrails before funding.',
+       dsl_expression = 'disbursement_limit_check and (previous_delinquency == 0) and credit_pass'
  WHERE id = '22222222-2222-2222-2222-222222222204';
 
 UPDATE checkpoints
-   SET description = 'Servicing intervention — active loan status and delinquency severity.'
+   SET description = 'Servicing intervention — active loan status and delinquency severity.',
+       dsl_expression = 'active_loan and (delinquent_severity < 60) and not (blocklist_check)'
  WHERE id = '22222222-2222-2222-2222-222222222205';
 
 UPDATE checkpoints
+   SET description = 'Superseded onboarding policy — lower KYC threshold (demo version history).',
+       dsl_expression = 'age_check and not (blocklist_check) and (kyc_score > 70)'
+ WHERE id = '22222222-2222-2222-2222-222222222299';
+
+UPDATE checkpoints
    SET description = 'Premium onboarding — stricter identity, sanctions, credit, and affordability gates.',
-       dsl_expression = 'identity_verified and sanctions_clear and credit_score >= 740 and debt_to_income_ratio < 0.35'
+       dsl_expression = 'identity_verified and sanctions_clear and (credit_score >= 740) and affordability_pass'
  WHERE id = '88888888-8888-8888-8888-888888888801';
 
 -- SAMPLE LENDING signal descriptions
@@ -1173,7 +1640,22 @@ UPDATE signals
  WHERE id = '33333333-3333-3333-3333-333333333313';
 
 UPDATE signals
-   SET description = 'Linked to Onboarding but excluded from signal_current_version; must not execute.'
+   SET description = 'Principal amount requested by the applicant for this product.'
+ WHERE id = '33333333-3333-3333-3333-333333333314';
+
+UPDATE signals
+   SET description = 'KYC composite score meets onboarding policy floor (≥ 80).',
+       expression_body = 'kyc_score >= 80'
+ WHERE id = '33333333-3333-3333-3333-333333333315';
+
+UPDATE signals
+   SET description = 'Bureau score meets underwriting threshold (≥ 680).',
+       expression_body = 'credit_score >= 680'
+ WHERE id = '33333333-3333-3333-3333-333333333316';
+
+UPDATE signals
+   SET description = 'Linked to Onboarding but excluded from signal_current_version; must not execute.',
+       expression_body = 'blocklist_check and (kyc_score < 50)'
  WHERE id = '77777777-7777-7777-7777-777777777701';
 
 -- OTHER BANK signal descriptions
@@ -1192,6 +1674,16 @@ UPDATE signals
 UPDATE signals
    SET description = 'Monthly debt obligations divided by verified gross income.'
  WHERE id = '88888888-8888-8888-8888-888888888805';
+
+UPDATE signals
+   SET description = 'Debt-to-income ratio within premium onboarding cap (< 35%).',
+       expression_body = 'debt_to_income_ratio < 0.35'
+ WHERE id = '88888888-8888-8888-8888-888888888806';
+
+UPDATE signal_variable_values
+   SET value = '35000'
+ WHERE signal_id = '33333333-3333-3333-3333-333333333314'
+   AND name = 'requested_loan_amount';
 
 UPDATE decision_log
    SET applicant_id = 'demo-applicant-1042',

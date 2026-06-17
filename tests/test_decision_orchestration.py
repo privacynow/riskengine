@@ -50,14 +50,17 @@ def _expression_signal(
 )
 class TestDecisionOrchestration:
     @pytest.fixture(autouse=True)
-    def noop_signal_log_persist(self, monkeypatch):
+    def noop_decision_persist(self, monkeypatch):
         from engine.services import decision as decision_mod
 
-        monkeypatch.setattr(decision_mod, "persist_signal_logs", lambda cur, items: None)
+        def _noop_persist(conn, cur, **kwargs):
+            conn.commit()
+
+        monkeypatch.setattr(decision_mod, "persist_decision_outcome", _noop_persist)
 
     def test_expression_signal_receives_request_params(self, monkeypatch):
-        from engine.db import get_db_connection
         from engine.services import decision as decision_mod
+        from engine.services.tenancy import CheckpointRow
 
         captured: dict = {}
 
@@ -75,16 +78,12 @@ class TestDecisionOrchestration:
             ],
         )
 
-        conn = get_db_connection()
-        cur = conn.cursor()
-        try:
-            from engine.services.tenancy import CheckpointRow
-
-            monkeypatch.setattr(
-                decision_mod,
-                "fetch_checkpoint_row_by_id",
-                lambda cur, tenant_id, checkpoint_id: CheckpointRow(
-                    id=checkpoint_id,
+        monkeypatch.setattr(
+            decision_mod,
+            "load_decision_execution_context",
+            lambda tenant_id, request, checkpoint_id=None: decision_mod.DecisionExecutionContext(
+                cp_row=CheckpointRow(
+                    id=checkpoint_id or SAMPLE_ONBOARDING_CHECKPOINT,
                     tenant_id=tenant_id,
                     name="orch-test",
                     description=None,
@@ -95,30 +94,33 @@ class TestDecisionOrchestration:
                     override_cost_flag=True,
                     timeout_seconds=30,
                 ),
-            )
+                checkpoint_id=checkpoint_id or SAMPLE_ONBOARDING_CHECKPOINT,
+                dsl_expression="score_gate",
+                max_cost=10,
+                override_cost_flag=True,
+                timeout_seconds=30,
+                signals=[
+                    _expression_signal("score_gate", expression_body="request_score > 10")
+                ],
+            ),
+        )
 
-            response = asyncio.run(
-                execute_decision(
-                    conn,
-                    cur,
-                    SAMPLE_TENANT,
-                    DecisionRequest(
-                        checkpoint_name="orch-test",
-                        applicant_id="app-1",
-                        parameters={"request_score": 12},
-                    ),
-                    checkpoint_id=SAMPLE_ONBOARDING_CHECKPOINT,
-                )
+        response = asyncio.run(
+            execute_decision(
+                SAMPLE_TENANT,
+                DecisionRequest(
+                    checkpoint_name="orch-test",
+                    applicant_id="app-1",
+                    parameters={"request_score": 12},
+                ),
+                checkpoint_id=SAMPLE_ONBOARDING_CHECKPOINT,
             )
-        finally:
-            cur.close()
-            conn.close()
+        )
 
         assert captured["context"]["request_score"] == 12
         assert response.signal_results["score_gate"] is True
 
     def test_checkpoint_deadline_caps_signal_wait(self, monkeypatch):
-        from engine.db import get_db_connection
         from engine.services import decision as decision_mod
 
         async def slow_invoke(**kwargs):
@@ -153,27 +155,18 @@ class TestDecisionOrchestration:
             ),
         )
 
-        conn = get_db_connection()
-        cur = conn.cursor()
-        try:
-            response = asyncio.run(
-                execute_decision(
-                    conn,
-                    cur,
-                    SAMPLE_TENANT,
-                    DecisionRequest(checkpoint_name="deadline-test", applicant_id="app-1"),
-                    checkpoint_id=SAMPLE_ONBOARDING_CHECKPOINT,
-                )
+        response = asyncio.run(
+            execute_decision(
+                SAMPLE_TENANT,
+                DecisionRequest(checkpoint_name="deadline-test", applicant_id="app-1"),
+                checkpoint_id=SAMPLE_ONBOARDING_CHECKPOINT,
             )
-        finally:
-            cur.close()
-            conn.close()
+        )
 
         assert response.signal_results["slow_signal"] is False
         assert response.final_decision_value == "False"
 
     def test_parallel_batch_runs_concurrently(self, monkeypatch):
-        from engine.db import get_db_connection
         from engine.services import decision as decision_mod
 
         started: list[str] = []
@@ -213,34 +206,26 @@ class TestDecisionOrchestration:
             ),
         )
 
-        conn = get_db_connection()
-        cur = conn.cursor()
-        try:
-            asyncio.run(
-                execute_decision(
-                    conn,
-                    cur,
-                    SAMPLE_TENANT,
-                    DecisionRequest(checkpoint_name="parallel-test", applicant_id="app-1"),
-                    checkpoint_id=SAMPLE_ONBOARDING_CHECKPOINT,
-                )
+        asyncio.run(
+            execute_decision(
+                SAMPLE_TENANT,
+                DecisionRequest(checkpoint_name="parallel-test", applicant_id="app-1"),
+                checkpoint_id=SAMPLE_ONBOARDING_CHECKPOINT,
             )
-        finally:
-            cur.close()
-            conn.close()
+        )
 
         assert started[:2] == ["start", "start"]
 
     def test_cost_skip_writes_terminal_signal_audit(self, monkeypatch):
-        from engine.db import get_db_connection
         from engine.services import decision as decision_mod
 
         captured: list[dict] = []
 
-        def capture_persist(cur, items):
-            captured.extend(items)
+        def capture_persist(conn, cur, **kwargs):
+            captured.extend(kwargs.get("pending_signal_logs", []))
+            conn.commit()
 
-        monkeypatch.setattr(decision_mod, "persist_signal_logs", capture_persist)
+        monkeypatch.setattr(decision_mod, "persist_decision_outcome", capture_persist)
         monkeypatch.setattr(
             decision_mod,
             "fetch_executable_signal_rows",
@@ -269,34 +254,26 @@ class TestDecisionOrchestration:
             ),
         )
 
-        conn = get_db_connection()
-        cur = conn.cursor()
-        try:
-            asyncio.run(
-                execute_decision(
-                    conn,
-                    cur,
-                    SAMPLE_TENANT,
-                    DecisionRequest(checkpoint_name="cost-skip-test", applicant_id="app-1"),
-                    checkpoint_id=SAMPLE_ONBOARDING_CHECKPOINT,
-                )
+        asyncio.run(
+            execute_decision(
+                SAMPLE_TENANT,
+                DecisionRequest(checkpoint_name="cost-skip-test", applicant_id="app-1"),
+                checkpoint_id=SAMPLE_ONBOARDING_CHECKPOINT,
             )
-        finally:
-            cur.close()
-            conn.close()
+        )
 
         skipped = [item for item in captured if item.get("error_message") == "cost_budget_exceeded"]
         assert skipped
         assert skipped[0]["success"] is False
 
     def test_parallel_checkpoint_timeout_preserves_completed_results(self, monkeypatch):
-        from engine.db import get_db_connection
         from engine.services import decision as decision_mod
 
         captured: list[dict] = []
 
-        def capture_persist(cur, items):
-            captured.extend(items)
+        def capture_persist(conn, cur, **kwargs):
+            captured.extend(kwargs.get("pending_signal_logs", []))
+            conn.commit()
 
         async def fake_invoke(*, expression_body, **kwargs):
             if expression_body == "slow":
@@ -305,7 +282,7 @@ class TestDecisionOrchestration:
                 await asyncio.sleep(0.05)
             return True
 
-        monkeypatch.setattr(decision_mod, "persist_signal_logs", capture_persist)
+        monkeypatch.setattr(decision_mod, "persist_decision_outcome", capture_persist)
         monkeypatch.setattr(decision_mod, "invoke_signal", fake_invoke)
         monkeypatch.setattr(
             decision_mod,
@@ -345,24 +322,16 @@ class TestDecisionOrchestration:
             ),
         )
 
-        conn = get_db_connection()
-        cur = conn.cursor()
-        try:
-            response = asyncio.run(
-                execute_decision(
-                    conn,
-                    cur,
-                    SAMPLE_TENANT,
-                    DecisionRequest(
-                        checkpoint_name="partial-timeout-test",
-                        applicant_id="app-1",
-                    ),
-                    checkpoint_id=SAMPLE_ONBOARDING_CHECKPOINT,
-                )
+        response = asyncio.run(
+            execute_decision(
+                SAMPLE_TENANT,
+                DecisionRequest(
+                    checkpoint_name="partial-timeout-test",
+                    applicant_id="app-1",
+                ),
+                checkpoint_id=SAMPLE_ONBOARDING_CHECKPOINT,
             )
-        finally:
-            cur.close()
-            conn.close()
+        )
 
         assert response.signal_results["fast_signal"] is True
         assert response.signal_results["slow_signal"] is False
@@ -423,8 +392,6 @@ class TestDecisionAuditDurability:
         try:
             response = asyncio.run(
                 execute_decision(
-                    conn,
-                    cur,
                     SAMPLE_TENANT,
                     DecisionRequest(
                         checkpoint_name="audit-durability-test",
@@ -505,10 +472,10 @@ class TestDecisionAuditDurability:
             ),
         )
 
-        def fail_before_finalize(cur, items):
+        def fail_before_finalize(*_args, **_kwargs):
             raise RuntimeError("forced failure before decision finalize")
 
-        monkeypatch.setattr(decision_mod, "persist_signal_logs", fail_before_finalize)
+        monkeypatch.setattr(decision_mod, "persist_decision_outcome", fail_before_finalize)
 
         conn = get_db_connection()
         cur = conn.cursor()
@@ -517,8 +484,6 @@ class TestDecisionAuditDurability:
             with pytest.raises(RuntimeError, match="forced failure before decision finalize"):
                 asyncio.run(
                     execute_decision(
-                        conn,
-                        cur,
                         SAMPLE_TENANT,
                         DecisionRequest(
                             checkpoint_name="audit-durability-cache-test",
@@ -533,7 +498,6 @@ class TestDecisionAuditDurability:
                 SELECT COUNT(*)
                   FROM decision_log
                  WHERE applicant_id = %s
-                   AND final_decision_value = 'PENDING'
                 """,
                 (applicant_id,),
             )

@@ -133,6 +133,19 @@
               @cancel="resetDetailDraft"
             />
 
+            <VersionHistoryPanel
+              v-else-if="detailTab === 'versions' && selectedCheckpoint"
+              resource-type="checkpoint"
+              :resource-id="selectedCheckpoint.id"
+              :resource-name="selectedCheckpoint.name"
+              :versions="versionHistory"
+              :loading="versionHistoryLoading"
+              diff-field="dsl_expression"
+              @promote="setCurrentVersion"
+              @deactivate="deactivateVersion"
+              @reactivate="reactivateVersion"
+            />
+
             <CheckpointForm
               v-else-if="detailTab === 'signals'"
               v-model="detailDraft"
@@ -169,6 +182,7 @@ import WorkbenchLayout from "@/components/workbench/WorkbenchLayout.vue";
 import WorkbenchTabs from "@/components/workbench/WorkbenchTabs.vue";
 import StatusBadge from "@/components/workbench/StatusBadge.vue";
 import LoadingSkeleton from "@/components/workbench/LoadingSkeleton.vue";
+import VersionHistoryPanel from "@/components/workbench/VersionHistoryPanel.vue";
 import { useCheckpointStore } from "@/stores/checkpointStore";
 import { useTenantStore } from "@/stores/tenantStore";
 
@@ -189,6 +203,8 @@ const {
   selectedId,
   detailTab,
   detailDraft,
+  versionHistory,
+  versionHistoryLoading,
 } = storeToRefs(checkpointStore);
 
 const { activeTenant } = storeToRefs(tenantStore);
@@ -204,6 +220,7 @@ const canReactivateSelected = computed(() =>
 const detailTabs = [
   { id: "summary", label: "Summary" },
   { id: "config", label: "DSL & policy" },
+  { id: "versions", label: "Versions" },
   { id: "signals", label: "Signals" },
 ];
 

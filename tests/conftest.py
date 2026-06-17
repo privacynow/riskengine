@@ -2,6 +2,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 
@@ -57,7 +58,7 @@ os.environ["DECISION_ENGINE_AUTH_TOKENS"] = json.dumps(
             "roles": ["test_runner"],
         },
         TEST_TENANT_ADMIN_TOKEN: {
-            "tenant_id": None,
+            "tenant_id": SAMPLE_TENANT,
             "actor_id": "test-tenant-admin",
             "roles": ["tenant_admin"],
         },
@@ -80,6 +81,66 @@ def _integration_tests_enabled() -> bool:
     return bool(os.environ.get("RUN_INTEGRATION_TESTS")) or os.environ.get(
         "DB_HOST", "localhost"
     ) != "localhost"
+
+
+def _install_signal_http_mock() -> None:
+    import engine.services.signals as signals_mod
+    from engine.demo.mocks import MOCK_ENDPOINT_RESPONSES
+
+    class _MockResponse:
+        def __init__(self, payload: dict):
+            self._payload = payload
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self):
+            return self._payload
+
+    def _payload_for_url(url: str) -> dict:
+        path = urlparse(url).path
+        if "/mock/" in path:
+            mock_name = path.split("/mock/", 1)[-1].strip("/").split("/")[0]
+            return MOCK_ENDPOINT_RESPONSES.get(mock_name, {"value": True})
+        return {"value": True}
+
+    class _MockAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def get(self, url, **kwargs):
+            return _MockResponse(_payload_for_url(url))
+
+        async def post(self, url, **kwargs):
+            return _MockResponse(_payload_for_url(url))
+
+        async def put(self, url, **kwargs):
+            return _MockResponse(_payload_for_url(url))
+
+        async def patch(self, url, **kwargs):
+            return _MockResponse(_payload_for_url(url))
+
+        async def delete(self, url, **kwargs):
+            return _MockResponse(_payload_for_url(url))
+
+    signals_mod.httpx.AsyncClient = _MockAsyncClient
+
+
+if _integration_tests_enabled():
+    _install_signal_http_mock()
+
+
+@pytest.fixture(autouse=True)
+def _ensure_signal_http_mock():
+    if _integration_tests_enabled():
+        _install_signal_http_mock()
+    yield
 
 
 @pytest.fixture(autouse=True)

@@ -21,6 +21,9 @@ export const checkpointsApi = {
       `/ui/search_checkpoints${buildQuery(params)}`
     );
   },
+  listVersions(id: string) {
+    return httpJson<{ items: Checkpoint[] }>(`/ui/checkpoints/${id}/versions`);
+  },
   get(id: string) {
     return httpJson<Checkpoint>(`/ui/checkpoints/${id}`);
   },

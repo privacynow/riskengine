@@ -29,6 +29,16 @@
         <input v-model="failuresOnly" type="checkbox" />
         Failures only
       </label>
+      <select
+        v-else-if="entityType === 'promotions'"
+        v-model="promotionAction"
+        class="toolbar-select"
+      >
+        <option value="">All actions</option>
+        <option value="promote">Promote</option>
+        <option value="deactivate">Deactivate</option>
+        <option value="reactivate">Reactivate</option>
+      </select>
       <button type="button" class="btn-primary" @click="runSearch(1)">Search</button>
     </DataToolbar>
 
@@ -162,6 +172,7 @@ const {
   correlationId,
   applicantId,
   failuresOnly,
+  promotionAction,
   fromDate,
   toDate,
   decisions,
@@ -199,6 +210,16 @@ watch(
     if (auditType === "signal_logs") entityType.value = "signal_logs";
     else if (auditType === "promotions") entityType.value = "promotions";
     else entityType.value = "decisions";
+  },
+  { immediate: true }
+);
+
+watch(
+  () => route.query.q,
+  (q) => {
+    if (typeof q === "string") {
+      query.value = q;
+    }
   },
   { immediate: true }
 );

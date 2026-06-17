@@ -113,6 +113,19 @@
               @cancel="resetDetailDraft"
             />
 
+            <VersionHistoryPanel
+              v-else-if="detailTab === 'versions' && selectedSignal"
+              resource-type="signal"
+              :resource-id="selectedSignal.id"
+              :resource-name="selectedSignal.name"
+              :versions="versionHistory"
+              :loading="versionHistoryLoading"
+              diff-field="expression_body"
+              @promote="setCurrentVersion"
+              @deactivate="deactivateVersion"
+              @reactivate="reactivateVersion"
+            />
+
             <div v-else-if="detailTab === 'associations'">
               <FormSection title="Used by checkpoints">
                 <AssociationPicker
@@ -170,6 +183,7 @@ import StatusBadge from "@/components/workbench/StatusBadge.vue";
 import FormSection from "@/components/workbench/FormSection.vue";
 import AssociationPicker from "@/components/workbench/AssociationPicker.vue";
 import LoadingSkeleton from "@/components/workbench/LoadingSkeleton.vue";
+import VersionHistoryPanel from "@/components/workbench/VersionHistoryPanel.vue";
 import { useSignalStore } from "@/stores/signalStore";
 import { useTenantStore } from "@/stores/tenantStore";
 
@@ -191,6 +205,8 @@ const {
   detailTab,
   detailDraft,
   detailAssociatedCheckpoints,
+  versionHistory,
+  versionHistoryLoading,
   checkpointSearch,
   checkpointCandidates,
   checkpointCandidatePage,
@@ -210,6 +226,7 @@ const canReactivateSelected = computed(() =>
 const detailTabs = [
   { id: "summary", label: "Summary" },
   { id: "config", label: "Configuration" },
+  { id: "versions", label: "Versions" },
   { id: "associations", label: "Checkpoints" },
   { id: "variables", label: "Values" },
 ];

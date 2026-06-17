@@ -12,6 +12,7 @@ from engine.services.secret_storage import (
     encrypt_secret,
 )
 from tests.conftest import (
+    OTHER_TENANT,
     SAMPLE_TENANT,
     TEST_ADMIN_READONLY_TOKEN,
     TEST_ADMIN_TOKEN,
@@ -318,6 +319,162 @@ def test_admin_readonly_denied_checkpoint_write():
             "override_cost_flag": False,
             "timeout_seconds": 30,
         },
+    )
+    assert response.status_code == 403
+
+
+def test_jwt_runtime_requires_tenant_id_claim(monkeypatch):
+    import importlib
+
+    import engine.main as main_module
+
+    secret = "jwt-runtime-tenant-secret"
+    monkeypatch.setenv("DECISION_ENGINE_JWT_HS256_SECRET", secret)
+    importlib.reload(main_module)
+    token = jwt.encode(
+        {
+            "sub": "jwt-runtime",
+            "roles": ["runtime"],
+            "exp": int(time.time()) + 3600,
+        },
+        secret,
+        algorithm="HS256",
+    )
+    client = TestClient(main_module.app)
+    response = client.post(
+        "/decisions",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "checkpoint_name": "Onboarding",
+            "applicant_id": "jwt-runtime-missing-tenant",
+            "correlation_id": "jwt-runtime-missing-tenant",
+            "parameters": {},
+        },
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Runtime JWT must include tenant_id claim."
+
+
+def test_jwt_runtime_with_tenant_id_can_execute(monkeypatch):
+    import importlib
+
+    import engine.main as main_module
+
+    secret = "jwt-runtime-exec-secret"
+    monkeypatch.setenv("DECISION_ENGINE_JWT_HS256_SECRET", secret)
+    importlib.reload(main_module)
+    token = jwt.encode(
+        {
+            "sub": "jwt-runtime",
+            "roles": ["runtime"],
+            "tenant_id": SAMPLE_TENANT,
+            "exp": int(time.time()) + 3600,
+        },
+        secret,
+        algorithm="HS256",
+    )
+    client = TestClient(main_module.app)
+    response = client.post(
+        "/decisions",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "checkpoint_name": "Onboarding",
+            "applicant_id": "jwt-runtime-applicant",
+            "correlation_id": "jwt-runtime-correlation",
+            "parameters": {},
+        },
+    )
+    assert response.status_code == 200
+
+
+def test_checkpoint_versions_endpoint_returns_history():
+    from engine.main import app
+
+    client = TestClient(app)
+    response = client.get(
+        "/ui/checkpoints/22222222-2222-2222-2222-222222222201/versions",
+        headers=auth_header(TEST_ADMIN_TOKEN),
+    )
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert len(items) >= 1
+    assert any(item["id"] == "22222222-2222-2222-2222-222222222201" for item in items)
+    assert any(item["is_current_version"] for item in items)
+
+
+def test_promotion_audit_action_filter():
+    from engine.main import app
+
+    client = TestClient(app)
+    response = client.get(
+        f"/ui/promotion_audit?tenant_id={SAMPLE_TENANT}&action=promote&page=1&size=10",
+        headers=auth_header(TEST_AUDIT_VIEWER_TOKEN),
+    )
+    assert response.status_code == 200
+    for item in response.json()["items"]:
+        assert item["action"] == "promote"
+
+
+def test_tenant_admin_denied_other_tenant_checkpoint_read():
+    from engine.main import app
+
+    client = TestClient(app)
+    response = client.get(
+        f"/ui/checkpoints?tenant_id={OTHER_TENANT}&page=1&size=1",
+        headers=auth_header(TEST_TENANT_ADMIN_TOKEN),
+    )
+    assert response.status_code == 403
+
+
+def test_tenant_admin_denied_other_tenant_read():
+    from engine.main import app
+
+    client = TestClient(app)
+    response = client.get(
+        f"/ui/tenants/{OTHER_TENANT}",
+        headers=auth_header(TEST_TENANT_ADMIN_TOKEN),
+    )
+    assert response.status_code == 403
+
+
+def test_tenant_admin_list_scoped_to_own_tenant():
+    from engine.main import app
+
+    client = TestClient(app)
+    response = client.get(
+        "/ui/tenants?page=1&size=5",
+        headers=auth_header(TEST_TENANT_ADMIN_TOKEN),
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert body["items"][0]["id"] == SAMPLE_TENANT
+
+
+def test_bound_config_operator_denied_cross_tenant_lifecycle(monkeypatch):
+    import importlib
+
+    import engine.main as main_module
+
+    secret = "config-operator-bound-secret"
+    monkeypatch.setenv("DECISION_ENGINE_JWT_HS256_SECRET", secret)
+    importlib.reload(main_module)
+
+    token = jwt.encode(
+        {
+            "sub": "config-operator-other",
+            "roles": ["config_operator"],
+            "tenant_id": OTHER_TENANT,
+            "exp": int(time.time()) + 3600,
+        },
+        secret,
+        algorithm="HS256",
+    )
+    client = TestClient(main_module.app)
+    response = client.post(
+        f"/ui/checkpoints/22222222-2222-2222-2222-222222222201/deactivate",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"promotion_reason": "Cross-tenant lifecycle must fail"},
     )
     assert response.status_code == 403
 

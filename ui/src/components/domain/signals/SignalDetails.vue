@@ -3,6 +3,15 @@
     <div class="detail-section">
       <h4>Signal details</h4>
       <dl class="detail-list">
+        <div>
+          <dt>Lifecycle</dt>
+          <dd>
+            <app-badge
+              :variant="signal.is_current_version ? 'current' : 'inactive'"
+              :text="signal.is_current_version ? 'Current version' : 'Inactive version'"
+            />
+          </dd>
+        </div>
         <div><dt>Type</dt><dd><app-badge :variant="typeBadge" :text="typeLabel" ></app-badge></dd></div>
         <div><dt>Method</dt><dd>{{ signal.method_of_call || "—" }}</dd></div>
         <div><dt>Cost</dt><dd>{{ signal.cost }}</dd></div>

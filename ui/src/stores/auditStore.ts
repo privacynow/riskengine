@@ -29,6 +29,7 @@ export const useAuditStore = defineStore("audit", {
     totalPages: 1,
     loading: false,
     error: "",
+    promotionAction: "" as "" | "promote" | "deactivate" | "reactivate",
     fromDate: "",
     toDate: "",
     selectedDecisionId: null as string | null,
@@ -98,6 +99,7 @@ export const useAuditStore = defineStore("audit", {
             size: this.pageSize,
           };
           if (q) params.q = q;
+          if (this.promotionAction) params.action = this.promotionAction;
           if (tenantId) params.tenant_id = tenantId;
           const data = await auditApi.searchPromotions(params);
           this.promotions = data.items;

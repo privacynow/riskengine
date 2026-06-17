@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run all Playwright specs locally (behavioral + visual). CI uses run_playwright_blocking_ci.sh.
+# Non-blocking visual snapshot review — uploads artifacts for human review.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -20,4 +20,4 @@ exec env -i PATH="${PATH}" HOME="${HOME:-}" \
   CI="${CI}" \
   BASE_URL="${BASE_URL}" \
   SMOKE_ADMIN_TOKEN="${SMOKE_ADMIN_TOKEN}" \
-  ./node_modules/.bin/playwright test "$@"
+  ./node_modules/.bin/playwright test src/tests/e2e/visual-review.spec.ts "$@"

@@ -20,6 +20,10 @@ Visual regression data is **not** in this folder — see `tests/fixtures/visual_
 | OTHER BANK checkpoint | `88888888-8888-8888-8888-888888888801` | Onboarding (stricter policy, declines in smoke) |
 | Decision log | `44444444-4444-4444-4444-444444444444` | Sample approved Onboarding row for audit/overview demos |
 | Signal (variable) | `33333333-3333-3333-3333-333333333301` | age_check |
+| Signal (expression) | `33333333-3333-3333-3333-333333333315` | kyc_pass — compositional KYC gate |
+| Signal (expression) | `33333333-3333-3333-3333-333333333316` | credit_pass — compositional bureau gate |
+| Signal (variable) | `33333333-3333-3333-3333-333333333314` | requested_loan_amount |
+| OTHER BANK expression | `88888888-8888-8888-8888-888888888806` | affordability_pass |
 | Inactive signal demo | `77777777-7777-7777-7777-777777777701` | Linked to Onboarding but not current |
 
 Runtime tokens in tests reference these tenant IDs via `tests/conftest.py` — not stored in SQL.
@@ -35,7 +39,7 @@ Runtime tokens in tests reference these tenant IDs via `tests/conftest.py` — n
 7. **Current-version pointers** — `checkpoint_current_version`, `signal_current_version`
 8. **Sample decision_log row** — overview/search demo data
 9. **Inactive signal** — strict resolution demo (linked but excluded from execution)
-10. **Policy refresh** — `UPDATE` statements for checkpoint/signal descriptions and demo values on existing volumes
+10. **Policy refresh** — `UPDATE` statements for checkpoint DSL, signal expressions, descriptions, and demo values on existing volumes (re-run section 10 without `docker down -v` to upgrade policy)
 
 All inserts are idempotent (`WHERE NOT EXISTS` / `ON CONFLICT`) so re-applying seed logic on an existing volume is safe.
 

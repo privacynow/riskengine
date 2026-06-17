@@ -208,5 +208,4 @@ async def make_decision(
     auth: AuthContext = Depends(require_runtime),
     tenant_id: str = Depends(runtime_tenant_id),
 ):
-    with db_cursor() as (conn, cur):
-        return await execute_decision(conn, cur, tenant_id, payload, actor_id=auth.actor_id)
+    return await execute_decision(tenant_id, payload, actor_id=auth.actor_id)

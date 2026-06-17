@@ -32,6 +32,7 @@ export type Checkpoint = {
   timeout_seconds?: number;
   is_current_version?: boolean;
   name_has_current_version?: boolean;
+  updated_at?: string;
 };
 
 export type Signal = {
@@ -58,6 +59,7 @@ export type Signal = {
   is_current_version?: boolean;
   name_has_current_version?: boolean;
   param_placeholders?: string[];
+  updated_at?: string;
 };
 
 export type CheckpointSignal = {
@@ -162,6 +164,7 @@ export type VariableValue = {
 };
 
 export type SignalDraft = {
+  id?: string;
   name: string;
   description: string;
   type: SignalType | string;
@@ -257,6 +260,7 @@ export function emptyCheckpointDraft(): CheckpointDraft {
 
 export function signalToDraft(signal: Signal): SignalDraft {
   return {
+    id: signal.id,
     name: signal.name,
     description: signal.description || "",
     type: signal.type,

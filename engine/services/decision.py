@@ -2,13 +2,15 @@ import asyncio
 import time
 import uuid
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-from ..audit import persist_signal_logs
 from ..cache import in_memory_signal_cache
 from ..config import logger
+from ..db import db_cursor
 from ..models import DecisionRequest, DecisionResponse
+from .decision_persist import persist_decision_outcome
 from .dsl import evaluate_expression, extract_dsl_identifiers
 from .signals import coerce_signal_value, invoke_signal
 from .templates import extract_placeholders_from_text
@@ -43,48 +45,101 @@ def partition_signals_by_cost(
     return runnable, skipped
 
 
+def _fetch_db_cached_value(
+    tenant_id: str,
+    checkpoint_id: str,
+    signal_id: str,
+    applicant_key: str | None,
+) -> tuple[str, datetime] | None:
+    """Short read-only lookup; does not hold the caller's write transaction."""
+    with db_cursor() as (_, cur):
+        cur.execute(
+            """
+            SELECT signal_value, expires_at
+              FROM signal_cached_values
+             WHERE tenant_id = %s
+               AND checkpoint_id = %s
+               AND signal_id = %s
+               AND (
+                 (applicant_id IS NULL AND %s IS NULL)
+                 OR (applicant_id = %s)
+               )
+            """,
+            (
+                tenant_id,
+                checkpoint_id,
+                signal_id,
+                applicant_key,
+                applicant_key,
+            ),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+        val_str, expires_at = row
+        if datetime.utcnow() >= expires_at:
+            return None
+        return val_str, expires_at
+
+
+        return val_str, expires_at
+
+
+@dataclass(frozen=True)
+class DecisionExecutionContext:
+    cp_row: CheckpointRow
+    checkpoint_id: str
+    dsl_expression: str
+    max_cost: int
+    override_cost_flag: bool
+    timeout_seconds: int
+    signals: List[ExecutableSignalRow]
+
+
+def load_decision_execution_context(
+    tenant_id: str,
+    request: DecisionRequest,
+    checkpoint_id: Optional[str] = None,
+) -> DecisionExecutionContext:
+    """Read checkpoint + executable signals in a short internal DB connection."""
+    with db_cursor() as (_, cur):
+        if checkpoint_id:
+            cp_row = fetch_checkpoint_row_by_id(cur, tenant_id, checkpoint_id)
+        else:
+            cp_row = fetch_current_checkpoint_row(cur, tenant_id, request.checkpoint_name)
+        resolved_checkpoint_id = cp_row.id
+        signals = fetch_executable_signal_rows(cur, tenant_id, resolved_checkpoint_id)
+    return DecisionExecutionContext(
+        cp_row=cp_row,
+        checkpoint_id=resolved_checkpoint_id,
+        dsl_expression=cp_row.dsl_expression,
+        max_cost=cp_row.max_cost,
+        override_cost_flag=cp_row.override_cost_flag,
+        timeout_seconds=cp_row.timeout_seconds,
+        signals=signals,
+    )
+
+
 async def execute_decision(
-    conn,
-    cur,
     tenant_id: str,
     request: DecisionRequest,
     actor_id: Optional[str] = None,
     checkpoint_id: Optional[str] = None,
 ) -> DecisionResponse:
-    if checkpoint_id:
-        cp_row: CheckpointRow = fetch_checkpoint_row_by_id(cur, tenant_id, checkpoint_id)
-    else:
-        cp_row = fetch_current_checkpoint_row(cur, tenant_id, request.checkpoint_name)
-    checkpoint_id = cp_row.id
-    dsl_expression = cp_row.dsl_expression
-    max_cost = cp_row.max_cost
-    override_cost_flag = cp_row.override_cost_flag
+    ctx = load_decision_execution_context(tenant_id, request, checkpoint_id)
+    cp_row = ctx.cp_row
+    checkpoint_id = ctx.checkpoint_id
+    dsl_expression = ctx.dsl_expression
+    max_cost = ctx.max_cost
+    override_cost_flag = ctx.override_cost_flag
+    signals = ctx.signals
+
+    decision_id = str(uuid.uuid4())
+    decision_started_at = datetime.utcnow()
     checkpoint_deadline = (
         time.monotonic() + cp_row.timeout_seconds if cp_row.timeout_seconds > 0 else None
     )
 
-    decision_id = str(uuid.uuid4())
-    decision_started_at = datetime.utcnow()
-    cur.execute(
-        """
-        INSERT INTO decision_log
-        (id, checkpoint_id, tenant_id, applicant_id,
-         final_decision_value, cost_incurred, correlation_id, decision_timestamp)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """,
-        (
-            decision_id,
-            checkpoint_id,
-            tenant_id,
-            request.applicant_id,
-            "PENDING",
-            0,
-            request.correlation_id,
-            decision_started_at,
-        ),
-    )
-
-    signals = fetch_executable_signal_rows(cur, tenant_id, checkpoint_id)
     total_cost = 0
     signal_results: Dict[str, Any] = {}
     user_params = request.parameters or {}
@@ -92,6 +147,7 @@ async def execute_decision(
 
     pending_signal_logs: list[dict[str, Any]] = []
     pending_memory_cache_writes: list[tuple[Any, ...]] = []
+    pending_db_cache_writes: list[dict[str, Any]] = []
 
     signals_by_order: Dict[int, list] = defaultdict(list)
     for signal in signals:
@@ -212,41 +268,20 @@ async def execute_decision(
             if cached_val is not None:
                 value = coerce_signal_value(cached_val)
             else:
-                cur2 = conn.cursor()
-                cur2.execute(
-                    """
-                    SELECT signal_value, expires_at
-                      FROM signal_cached_values
-                     WHERE tenant_id = %s
-                       AND checkpoint_id = %s
-                       AND signal_id = %s
-                       AND (
-                         (applicant_id IS NULL AND %s IS NULL)
-                         OR (applicant_id = %s)
-                       )
-                    """,
-                    (
+                cached = _fetch_db_cached_value(
+                    tenant_id, checkpoint_id, row.id, applicant_key
+                )
+                if cached is not None:
+                    val_str, _expires_at = cached
+                    value = coerce_signal_value(val_str)
+                    in_memory_signal_cache.set(
                         tenant_id,
                         checkpoint_id,
+                        applicant_key,
                         row.id,
-                        applicant_key,
-                        applicant_key,
-                    ),
-                )
-                crow = cur2.fetchone()
-                if crow:
-                    val_str, expires_at = crow
-                    if datetime.utcnow() < expires_at:
-                        value = coerce_signal_value(val_str)
-                        in_memory_signal_cache.set(
-                            tenant_id,
-                            checkpoint_id,
-                            applicant_key,
-                            row.id,
-                            val_str,
-                            row.cache_expiration_seconds,
-                        )
-                cur2.close()
+                        val_str,
+                        row.cache_expiration_seconds,
+                    )
 
         if value is None:
             try:
@@ -284,6 +319,8 @@ async def execute_decision(
                 error_message = str(exc)
 
             if row.allow_caching and success:
+                val_str = str(value)
+                expires_at = datetime.utcnow() + timedelta(seconds=row.cache_expiration_seconds)
                 pending_memory_cache_writes.append(
                     (
                         tenant_id,
@@ -294,45 +331,16 @@ async def execute_decision(
                         row.cache_expiration_seconds,
                     )
                 )
-                cur3 = conn.cursor()
-                try:
-                    expires_at = datetime.utcnow() + timedelta(seconds=row.cache_expiration_seconds)
-                    val_str = str(value)
-                    cur3.execute(
-                        """
-                        INSERT INTO signal_cached_values
-                        (id, tenant_id, checkpoint_id, signal_id, applicant_id, signal_value, expires_at)
-                        VALUES (uuid_generate_v4(), %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT DO NOTHING
-                        """,
-                        (tenant_id, checkpoint_id, row.id, applicant_key, val_str, expires_at),
-                    )
-                    cur3.execute(
-                        """
-                        UPDATE signal_cached_values
-                           SET signal_value = %s,
-                               expires_at = %s,
-                               updated_at = NOW()
-                         WHERE tenant_id = %s
-                           AND checkpoint_id = %s
-                           AND signal_id = %s
-                           AND (
-                             (applicant_id IS NULL AND %s IS NULL)
-                             OR (applicant_id = %s)
-                           )
-                        """,
-                        (
-                            val_str,
-                            expires_at,
-                            tenant_id,
-                            checkpoint_id,
-                            row.id,
-                            applicant_key,
-                            applicant_key,
-                        ),
-                    )
-                finally:
-                    cur3.close()
+                pending_db_cache_writes.append(
+                    {
+                        "tenant_id": tenant_id,
+                        "checkpoint_id": checkpoint_id,
+                        "signal_id": row.id,
+                        "applicant_key": applicant_key,
+                        "value_str": val_str,
+                        "expires_at": expires_at,
+                    }
+                )
 
         ended = datetime.utcnow()
         enqueue_signal_log(
@@ -391,6 +399,7 @@ async def execute_decision(
         signal_results[name] = coerce_signal_value(val)
         total_cost += cost
 
+    # --- Execute phase (no DB write transaction held) ---
     for order_val in sorted(signals_by_order.keys()):
         if checkpoint_time_exhausted():
             for sig in signals_by_order[order_val]:
@@ -430,18 +439,23 @@ async def execute_decision(
             final_eval = False
 
     final_decision_val = str(final_eval)
-    persist_signal_logs(cur, pending_signal_logs)
-    cur.execute(
-        """
-        UPDATE decision_log
-           SET final_decision_value = %s,
-               cost_incurred = %s,
-               updated_at = NOW()
-         WHERE id = %s
-        """,
-        (final_decision_val, total_cost, decision_id),
-    )
-    conn.commit()
+
+    # --- Persist phase (single short write transaction) ---
+    with db_cursor() as (conn, cur):
+        persist_decision_outcome(
+            conn,
+            cur,
+            decision_id=decision_id,
+            checkpoint_id=checkpoint_id,
+            tenant_id=tenant_id,
+            applicant_id=request.applicant_id,
+            correlation_id=request.correlation_id,
+            decision_timestamp=decision_started_at,
+            final_decision_value=final_decision_val,
+            total_cost=total_cost,
+            pending_signal_logs=pending_signal_logs,
+            pending_db_cache_writes=pending_db_cache_writes,
+        )
     for cache_tenant_id, cache_checkpoint_id, cache_applicant_key, cache_signal_id, cache_value, cache_ttl in pending_memory_cache_writes:
         in_memory_signal_cache.set(
             cache_tenant_id,

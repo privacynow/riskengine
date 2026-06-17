@@ -11,19 +11,22 @@ from typing import Any, Dict, Optional
 import jwt
 from fastapi import Depends, HTTPException, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jwt import PyJWKClient
 
 from .db import db_cursor
 from .permissions import permissions_for_roles
 
 AUTH_CONFIG_HELP = (
     "Set DECISION_ENGINE_AUTH_TOKENS (JSON object) or DECISION_ENGINE_AUTH_TOKENS_FILE "
-    "(path to JSON), and/or DECISION_ENGINE_JWT_HS256_SECRET for JWT-only auth "
-    "(optional DECISION_ENGINE_JWT_ISSUER / DECISION_ENGINE_JWT_AUDIENCE). "
-    "Local bootstrap: bash scripts/create_demo_env.sh"
+    "(path to JSON) for local/dev static tokens; production should use "
+    "DECISION_ENGINE_JWT_JWKS_URL (RS256/ES256) and/or DECISION_ENGINE_JWT_HS256_SECRET "
+    "(optional DECISION_ENGINE_JWT_ISSUER / DECISION_ENGINE_JWT_AUDIENCE / "
+    "DECISION_ENGINE_JWT_ALGORITHMS). Local bootstrap: bash scripts/create_demo_env.sh"
 )
 
 _bearer = HTTPBearer(auto_error=False)
 _token_map: Optional[Dict[str, Dict[str, Any]]] = None
+_jwks_client: PyJWKClient | None = None
 
 
 def _parse_token_map(raw: str) -> Dict[str, Dict[str, Any]]:
@@ -47,9 +50,18 @@ def _validate_token_map(token_map: Dict[str, Dict[str, Any]]) -> None:
             raise RuntimeError(f"Runtime auth entry at index {index} must include tenant_id.")
 
 
+def _jwt_jwks_url() -> str | None:
+    return os.environ.get("DECISION_ENGINE_JWT_JWKS_URL", "").strip() or None
+
+
+def _jwt_algorithms() -> list[str]:
+    raw = os.environ.get("DECISION_ENGINE_JWT_ALGORITHMS", "RS256,ES256,HS256")
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
 def _jwt_configured() -> bool:
     secret, _, _ = _jwt_settings()
-    return bool(secret)
+    return bool(secret) or bool(_jwt_jwks_url())
 
 
 def _read_auth_config_raw() -> str | None:
@@ -115,27 +127,22 @@ def _jwt_settings() -> tuple[str | None, str | None, str | None]:
     return secret, issuer, audience
 
 
-def _auth_context_from_jwt(token: str) -> AuthContext | None:
-    secret, issuer, audience = _jwt_settings()
-    if not secret:
-        return None
-    options = {"require": ["exp", "sub"]}
-    decode_kwargs: dict[str, Any] = {"algorithms": ["HS256"], "options": options}
-    if issuer:
-        decode_kwargs["issuer"] = issuer
-    if audience:
-        decode_kwargs["audience"] = audience
-    try:
-        claims = jwt.decode(token, secret, **decode_kwargs)
-    except jwt.PyJWTError:
-        return None
+def _roles_from_claims(claims: dict[str, Any]) -> frozenset[str]:
     roles_raw = claims.get("roles") or claims.get("role") or []
     if isinstance(roles_raw, str):
-        roles = frozenset({roles_raw})
-    elif isinstance(roles_raw, list):
-        roles = frozenset(str(r) for r in roles_raw)
-    else:
-        roles = frozenset()
+        return frozenset({roles_raw})
+    if isinstance(roles_raw, list):
+        return frozenset(str(role) for role in roles_raw)
+    return frozenset()
+
+
+def _auth_context_from_claims(claims: dict[str, Any]) -> AuthContext:
+    roles = _roles_from_claims(claims)
+    if "runtime" in roles and not claims.get("tenant_id"):
+        raise HTTPException(
+            status_code=401,
+            detail="Runtime JWT must include tenant_id claim.",
+        )
     tenant_id = claims.get("tenant_id")
     return AuthContext(
         actor_id=str(claims.get("sub") or claims.get("actor_id") or "unknown"),
@@ -143,6 +150,38 @@ def _auth_context_from_jwt(token: str) -> AuthContext | None:
         roles=roles,
         auth_method="jwt",
     )
+
+
+def _decode_jwt(token: str) -> dict[str, Any] | None:
+    secret, issuer, audience = _jwt_settings()
+    jwks_url = _jwt_jwks_url()
+    if not secret and not jwks_url:
+        return None
+    options = {"require": ["exp", "sub"]}
+    decode_kwargs: dict[str, Any] = {"options": options}
+    if issuer:
+        decode_kwargs["issuer"] = issuer
+    if audience:
+        decode_kwargs["audience"] = audience
+    try:
+        if jwks_url:
+            global _jwks_client
+            if _jwks_client is None:
+                _jwks_client = PyJWKClient(jwks_url)
+            signing_key = _jwks_client.get_signing_key_from_jwt(token)
+            decode_kwargs["algorithms"] = _jwt_algorithms()
+            return jwt.decode(token, signing_key.key, **decode_kwargs)
+        decode_kwargs["algorithms"] = ["HS256"]
+        return jwt.decode(token, secret, **decode_kwargs)
+    except jwt.PyJWTError:
+        return None
+
+
+def _auth_context_from_jwt(token: str) -> AuthContext | None:
+    claims = _decode_jwt(token)
+    if not claims:
+        return None
+    return _auth_context_from_claims(claims)
 
 
 def get_auth_context(
@@ -211,6 +250,17 @@ def runtime_tenant_id(auth: AuthContext = Depends(require_runtime)) -> str:
     return auth.tenant_id
 
 
+def assert_admin_tenant_access(auth: AuthContext, tenant_id: str) -> None:
+    """Reject cross-tenant access when the token carries tenant_id (runtime, tenant_admin, etc.)."""
+    if auth.is_admin:
+        return
+    if auth.tenant_id:
+        if auth.tenant_id != tenant_id:
+            raise HTTPException(status_code=403, detail="Tenant access denied.")
+        return
+    # Unbound operator tokens (audit_viewer, config_operator, test_runner) scope via query param.
+
+
 def resolve_admin_tenant_id(
     auth: AuthContext,
     tenant_id: Optional[str],
@@ -222,7 +272,10 @@ def resolve_admin_tenant_id(
             cur.execute("SELECT id FROM tenants WHERE id = %s", (tenant_id,))
             if not cur.fetchone():
                 raise HTTPException(status_code=404, detail="Tenant not found.")
+        assert_admin_tenant_access(auth, tenant_id)
         return tenant_id
+    if auth.tenant_id and not auth.is_admin:
+        return auth.tenant_id
     if required and not auth.is_admin:
         raise HTTPException(status_code=422, detail="tenant_id is required.")
     return None
@@ -232,9 +285,14 @@ def admin_tenant_query(
     tenant_id: Optional[str] = Query(None),
     auth: AuthContext = Depends(require_permission("admin:read")),
 ) -> Optional[str]:
-    if tenant_id:
-        return resolve_admin_tenant_id(auth, tenant_id, required=False)
-    return None
+    return resolve_admin_tenant_id(auth, tenant_id, required=False)
+
+
+def audit_tenant_query(
+    tenant_id: Optional[str] = Query(None),
+    auth: AuthContext = Depends(require_permission("audit:read")),
+) -> Optional[str]:
+    return resolve_admin_tenant_id(auth, tenant_id, required=False)
 
 
 def assert_decision_tenant_access(auth: AuthContext, decision_tenant_id: str) -> None:

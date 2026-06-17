@@ -1,283 +1,60 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends
 
-from ...db import get_db_connection
+from ...auth import AuthContext, require_permission
 from ...models import TenantCreateUpdate
-from ...services.admin_responses import admin_mutation
-from ...services.pagination import (
-    MAX_PAGE_SIZE,
-    build_paginated_response,
-    paginate_query,
+from ...services.admin.tenants import (
+    create_tenant,
+    delete_tenant,
+    get_tenant,
+    list_all_tenants,
+    list_tenants,
+    update_tenant,
 )
 from ...types import UuidStr
-from ._deps import AdminRead, TenantManage
-from ._shared import _collect_all_pages, raise_admin_error
+from ._deps import AdminRead, admin_read_auth
 
 router = APIRouter()
 
-@router.post("/ui/tenants", dependencies=[TenantManage])
-def create_tenant(payload: TenantCreateUpdate):
-    conn = get_db_connection()
-    cur = conn.cursor()
-    
-    try:
-        # Create new tenant
-        cur.execute(
-            "INSERT INTO tenants (name) VALUES (%s) RETURNING id",
-            (payload.name,)
-        )
-        new_tenant_id = cur.fetchone()[0]
-        
-        # If copying from existing tenant
-        if payload.copy_from_tenant_id:
-            cur.execute(
-                """
-                SELECT c.id, c.name, c.description, c.type, c.dsl_expression,
-                       c.method_of_call, c.max_cost, c.override_cost_flag, c.timeout_seconds
-                  FROM checkpoints c
-                  JOIN checkpoint_current_version cv
-                    ON c.id = cv.checkpoint_id AND c.tenant_id = cv.tenant_id
-                 WHERE c.tenant_id = %s
-                """,
-                (payload.copy_from_tenant_id,),
-            )
-            checkpoint_mappings: dict[str, str] = {}
-            for old_id, name, description, cp_type, dsl, method, max_cost, override, timeout in cur.fetchall():
-                cur.execute(
-                    """
-                    INSERT INTO checkpoints (
-                        tenant_id, name, description, type, dsl_expression,
-                        method_of_call, max_cost, override_cost_flag, timeout_seconds
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    RETURNING id
-                    """,
-                    (
-                        new_tenant_id,
-                        name,
-                        description,
-                        cp_type,
-                        dsl,
-                        method,
-                        max_cost,
-                        override,
-                        timeout,
-                    ),
-                )
-                new_cp_id = cur.fetchone()[0]
-                checkpoint_mappings[str(old_id)] = str(new_cp_id)
-                cur.execute(
-                    """
-                    INSERT INTO checkpoint_current_version (tenant_id, name, checkpoint_id)
-                    VALUES (%s, %s, %s)
-                    """,
-                    (new_tenant_id, name, new_cp_id),
-                )
 
-            cur.execute(
-                """
-                SELECT s.id, s.name, s.description, s.type, s.method_of_call,
-                       s.expression_body, s.cost, s.cache_expiration_seconds, s.timeout_seconds,
-                       s.can_run_in_parallel, s.order_of_evaluation, s.http_method,
-                       s.request_url_params_template, s.request_body_template,
-                       s.request_headers_template, s.allow_caching, s.global_reuse,
-                       s.function_params_template
-                  FROM signals s
-                  JOIN signal_current_version cv
-                    ON s.id = cv.signal_id AND s.tenant_id = cv.tenant_id
-                 WHERE s.tenant_id = %s
-                """,
-                (payload.copy_from_tenant_id,),
-            )
-            signal_name_to_new_id: dict[str, str] = {}
-            for row in cur.fetchall():
-                (
-                    old_sig_id,
-                    name,
-                    description,
-                    sig_type,
-                    method_of_call,
-                    expression_body,
-                    cost,
-                    cache_expiration_seconds,
-                    timeout_seconds,
-                    can_run_in_parallel,
-                    order_of_evaluation,
-                    http_method,
-                    request_url_params_template,
-                    request_body_template,
-                    request_headers_template,
-                    allow_caching,
-                    global_reuse,
-                    function_params_template,
-                ) = row
-                cur.execute(
-                    """
-                    INSERT INTO signals (
-                        tenant_id, name, description, type, method_of_call,
-                        expression_body, cost, cache_expiration_seconds, timeout_seconds,
-                        can_run_in_parallel, order_of_evaluation, http_method,
-                        request_url_params_template, request_body_template,
-                        request_headers_template, bearer_token, allow_caching,
-                        global_reuse, function_params_template
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, %s, %s, %s)
-                    RETURNING id
-                    """,
-                    (
-                        new_tenant_id,
-                        name,
-                        description,
-                        sig_type,
-                        method_of_call,
-                        expression_body,
-                        cost,
-                        cache_expiration_seconds,
-                        timeout_seconds,
-                        can_run_in_parallel,
-                        order_of_evaluation,
-                        http_method,
-                        request_url_params_template,
-                        request_body_template,
-                        request_headers_template,
-                        allow_caching,
-                        global_reuse,
-                        function_params_template,
-                    ),
-                )
-                new_sig_id = cur.fetchone()[0]
-                signal_name_to_new_id[name] = str(new_sig_id)
-                cur.execute(
-                    """
-                    INSERT INTO signal_current_version (tenant_id, name, signal_id)
-                    VALUES (%s, %s, %s)
-                    """,
-                    (new_tenant_id, name, new_sig_id),
-                )
+@router.post("/ui/tenants")
+def create_tenant_route(
+    payload: TenantCreateUpdate,
+    auth: AuthContext = Depends(require_permission("tenant:manage")),
+):
+    return create_tenant(payload, auth=auth)
 
-            for old_cp_id, new_cp_id in checkpoint_mappings.items():
-                cur.execute(
-                    """
-                    SELECT DISTINCT s.name
-                      FROM checkpoint_signals cs
-                      JOIN signals s ON s.id = cs.signal_id
-                     WHERE cs.checkpoint_id = %s::uuid
-                    """,
-                    (old_cp_id,),
-                )
-                for (linked_signal_name,) in cur.fetchall():
-                    new_sig_id = signal_name_to_new_id.get(linked_signal_name)
-                    if not new_sig_id:
-                        continue
-                    cur.execute(
-                        """
-                        INSERT INTO checkpoint_signals (checkpoint_id, signal_id)
-                        SELECT %s::uuid, %s::uuid
-                         WHERE NOT EXISTS (
-                            SELECT 1 FROM checkpoint_signals
-                             WHERE checkpoint_id = %s::uuid AND signal_id = %s::uuid
-                         )
-                        """,
-                        (new_cp_id, new_sig_id, new_cp_id, new_sig_id),
-                    )
-
-            for signal_name, new_sig_id in signal_name_to_new_id.items():
-                cur.execute(
-                    """
-                    INSERT INTO signal_variable_values (signal_id, name, value)
-                    SELECT DISTINCT ON (svv.name) %s::uuid, svv.name, svv.value
-                      FROM signal_variable_values svv
-                      JOIN signals s ON s.id = svv.signal_id
-                     WHERE s.tenant_id = %s AND s.name = %s
-                     ORDER BY svv.name, svv.updated_at DESC
-                    ON CONFLICT (signal_id, name) DO NOTHING
-                    """,
-                    (new_sig_id, payload.copy_from_tenant_id, signal_name),
-                )
-        
-        conn.commit()
-        return admin_mutation("created", new_tenant_id)
-    
-    except Exception as e:
-        conn.rollback()
-        raise_admin_error(e, context="create_tenant failed")
-    finally:
-        cur.close()
-        conn.close()
 
 @router.get("/ui/tenants", dependencies=[AdminRead])
-def list_tenants(page: int = 1, size: int = 10):
-    conn = None
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        base_query = "SELECT id, name FROM tenants ORDER BY name ASC, id ASC"
-        total, rows, page, size = paginate_query(cur, base_query, (), page, size)
-        items = []
-        for r in rows:
-            items.append({"id": str(r[0]), "name": r[1]})
-        return build_paginated_response(items, total, page, size)
-    finally:
-        if conn:
-            conn.close()
+def list_tenants_route(
+    page: int = 1,
+    size: int = 10,
+    auth: AuthContext = Depends(admin_read_auth),
+):
+    return list_tenants(auth=auth, page=page, size=size)
 
 
 @router.get("/ui/all_tenants", dependencies=[AdminRead])
-def list_all_tenants():
-    """Unpaginated tenant list for dropdowns and bulk admin views."""
-    return _collect_all_pages(
-        lambda page: list_tenants(page=page, size=MAX_PAGE_SIZE)
-    )
+def list_all_tenants_route(auth: AuthContext = Depends(admin_read_auth)):
+    return list_all_tenants(auth=auth)
 
 
 @router.get("/ui/tenants/{tenant_id}", dependencies=[AdminRead])
-def get_tenant(tenant_id: UuidStr):
-    conn = None
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT id, name FROM tenants WHERE id=%s", (tenant_id,))
-        row = cur.fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="Tenant not found.")
-        return {"id": str(row[0]), "name": row[1]}
-    finally:
-        if conn:
-            conn.close()
+def get_tenant_route(tenant_id: UuidStr, auth: AuthContext = Depends(admin_read_auth)):
+    return get_tenant(tenant_id, auth=auth)
 
 
-@router.put("/ui/tenants/{tenant_id}", dependencies=[TenantManage])
-def update_tenant(tenant_id: UuidStr, payload: TenantCreateUpdate):
-    conn = None
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute(
-            """
-            UPDATE tenants
-               SET name = %s,
-                   updated_at = NOW()
-             WHERE id = %s
-            """,
-            (payload.name, tenant_id),
-        )
-        if cur.rowcount == 0:
-            raise HTTPException(status_code=404, detail="Tenant not found.")
-        conn.commit()
-        return admin_mutation("updated", tenant_id, name=payload.name)
-    finally:
-        if conn:
-            conn.close()
+@router.put("/ui/tenants/{tenant_id}")
+def update_tenant_route(
+    tenant_id: UuidStr,
+    payload: TenantCreateUpdate,
+    auth: AuthContext = Depends(require_permission("tenant:manage")),
+):
+    return update_tenant(tenant_id, payload, auth=auth)
 
 
-@router.delete("/ui/tenants/{tenant_id}", dependencies=[TenantManage])
-def delete_tenant(tenant_id: UuidStr):
-    conn = None
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute("DELETE FROM tenants WHERE id = %s", (tenant_id,))
-        if cur.rowcount == 0:
-            raise HTTPException(status_code=404, detail="Tenant not found.")
-        conn.commit()
-        return admin_mutation("deleted", tenant_id)
-    finally:
-        if conn:
-            conn.close()
+@router.delete("/ui/tenants/{tenant_id}")
+def delete_tenant_route(
+    tenant_id: UuidStr,
+    auth: AuthContext = Depends(require_permission("tenant:manage")),
+):
+    return delete_tenant(tenant_id, auth=auth)

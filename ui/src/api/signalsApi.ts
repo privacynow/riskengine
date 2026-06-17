@@ -19,6 +19,9 @@ export const signalsApi = {
   search(params: SignalListParams & { q: string }) {
     return httpJson<Paginated<Signal>>(`/ui/search_signals${buildQuery(params)}`);
   },
+  listVersions(id: string) {
+    return httpJson<{ items: Signal[] }>(`/ui/signals/${id}/versions`);
+  },
   get(id: string) {
     return httpJson<Signal>(`/ui/signals/${id}`);
   },

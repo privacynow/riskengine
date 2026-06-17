@@ -45,10 +45,12 @@ export const useSignalStore = defineStore("signal", {
     checkpointCandidateTotalPages: {} as Record<string, number>,
     expandedCandidate: {} as Record<string, Record<string, boolean>>,
     selectedId: null as string | null,
-    detailTab: "summary" as "summary" | "config" | "associations" | "variables",
+    detailTab: "summary" as "summary" | "config" | "versions" | "associations" | "variables",
     detailDraft: emptySignalDraft(),
     detailAssociatedCheckpoints: [] as { id: string; name: string }[],
     detailSignal: null as Signal | null,
+    versionHistory: [] as Signal[],
+    versionHistoryLoading: false,
   }),
   getters: {
     selectedSignal(state): Signal | undefined {
@@ -88,9 +90,23 @@ export const useSignalStore = defineStore("signal", {
         this.detailSignal = fromList;
         this.detailDraft = signalToDraft(fromList);
         void this.loadAssociations(id);
+        void this.loadVersionHistory(id);
         return;
       }
       await this.loadSignalDetail(id);
+    },
+
+    async loadVersionHistory(signalId: string) {
+      this.versionHistoryLoading = true;
+      try {
+        const data = await signalsApi.listVersions(signalId);
+        this.versionHistory = data.items;
+      } catch (err) {
+        useAuthStore().handleApiError(err);
+        this.versionHistory = [];
+      } finally {
+        this.versionHistoryLoading = false;
+      }
     },
 
     async loadSignalDetail(id: string) {
@@ -102,6 +118,7 @@ export const useSignalStore = defineStore("signal", {
           this.items = [signal, ...this.items];
         }
         void this.loadAssociations(id);
+        void this.loadVersionHistory(id);
       } catch (err) {
         this.detailSignal = null;
         useAuthStore().handleApiError(err);
@@ -313,8 +330,8 @@ export const useSignalStore = defineStore("signal", {
     },
 
     async setCurrentVersion(signalId: string) {
-      const signal = this.items.find((s) => s.id === signalId);
-      if (!signal) return;
+      const signal = this.selectedSignal ?? this.items.find((s) => s.id === signalId);
+      if (!signal || signal.id !== signalId) return;
       const { promote } = usePromoteDialog();
       const reason = await promote({
         title: "Promote signal version",
@@ -327,6 +344,8 @@ export const useSignalStore = defineStore("signal", {
         await this.loadAll(this.page);
         if (this.selectedId === signalId) {
           await this.selectSignal(signalId);
+        } else {
+          void this.loadVersionHistory(signalId);
         }
         useUiStore().notify("Current signal version updated.");
       } catch (err) {
@@ -335,8 +354,8 @@ export const useSignalStore = defineStore("signal", {
     },
 
     async deactivateVersion(signalId: string) {
-      const signal = this.items.find((s) => s.id === signalId);
-      if (!signal?.is_current_version) return;
+      const signal = this.selectedSignal ?? this.items.find((s) => s.id === signalId);
+      if (!signal || signal.id !== signalId || !signal.is_current_version) return;
       const { promote } = usePromoteDialog();
       const reason = await promote({
         title: "Deactivate signal",
@@ -350,6 +369,8 @@ export const useSignalStore = defineStore("signal", {
         await this.loadAll(this.page);
         if (this.selectedId === signalId) {
           await this.selectSignal(signalId);
+        } else {
+          void this.loadVersionHistory(signalId);
         }
         useUiStore().notify("Signal deactivated.");
       } catch (err) {
@@ -358,8 +379,15 @@ export const useSignalStore = defineStore("signal", {
     },
 
     async reactivateVersion(signalId: string) {
-      const signal = this.items.find((s) => s.id === signalId);
-      if (!signal || signal.is_current_version || signal.name_has_current_version !== false) return;
+      const signal = this.selectedSignal ?? this.items.find((s) => s.id === signalId);
+      if (
+        !signal ||
+        signal.id !== signalId ||
+        signal.is_current_version ||
+        signal.name_has_current_version !== false
+      ) {
+        return;
+      }
       const { promote } = usePromoteDialog();
       const reason = await promote({
         title: "Reactivate signal",
@@ -373,6 +401,8 @@ export const useSignalStore = defineStore("signal", {
         await this.loadAll(this.page);
         if (this.selectedId === signalId) {
           await this.selectSignal(signalId);
+        } else {
+          void this.loadVersionHistory(signalId);
         }
         useUiStore().notify("Signal reactivated.");
       } catch (err) {

@@ -52,7 +52,11 @@ Within each order group:
 Expression signals receive prior signal results plus request `parameters` whose names appear as DSL identifiers in `expression_body` (and template placeholders for HTTP/function signals).
 
 4. Evaluates checkpoint `dsl_expression`
-5. Persists signal audit rows and finalizes `decision_log` in one database transaction (no in-process-only queue; uncommitted `PENDING` rolls back on crash)
+5. Persists `decision_log`, signal audit rows, and cache writes in one short write transaction after execution completes. Signal HTTP calls run with no write transaction held; cache reads use independent short read connections.
+
+### Signal caching
+
+Signals with `allow_caching=true` read `signal_cached_values` via short read connections. New cache writes are staged in memory and persisted in the final write transaction. The in-memory cache updates only after commit succeeds.
 
 ## Configuration writes
 
@@ -81,4 +85,11 @@ Source: `ui/src/`. Served at `/admin/`. Active tenant in `?tenant=<uuid>`. Front
 
 ## Test fixtures
 
-Visual regression data lives in `tests/fixtures/visual_fixture.sql` and is applied with `scripts/seed_visual_fixture.sh` — not during application startup.
+Playwright and integration tests use SQL fixtures applied on demand — not during application startup:
+
+| Fixture | File | Purpose |
+|---------|------|---------|
+| Visual regression | `tests/fixtures/visual_fixture.sql` | Stable `VISUAL FIXTURE BANK` tenant for screenshot tests |
+| Lifecycle e2e | `tests/fixtures/lifecycle_e2e_fixture.sql` | Scratch `Lifecycle E2E Checkpoint` for deactivate/reactivate tests |
+
+Both are applied by `scripts/seed_visual_fixture.sh` (CI runs this before Playwright). See [ui/README.md](../ui/README.md) for how specs consume them.

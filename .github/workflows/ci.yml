@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   test:
@@ -56,17 +57,14 @@ jobs:
       - name: UI smoke test
         run: bash scripts/ui_smoke.sh
 
-      - name: Seed visual fixture
-        run: bash scripts/seed_visual_fixture.sh
-
-      - name: UI e2e tests
-        run: bash scripts/run_playwright_ci.sh
+      - name: Playwright behavioral e2e
+        run: bash scripts/run_playwright_blocking_ci.sh
 
       - name: Upload Playwright artifacts
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-results
+          name: playwright-behavioral-results
           path: |
             ui/test-results
             ui/playwright-report
@@ -74,3 +72,46 @@ jobs:
 
       - name: Whitespace check
         run: git diff --check
+
+  visual-review:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate demo env
+        run: bash scripts/create_demo_env.sh
+
+      - name: Start services
+        run: docker compose up -d --build
+
+      - name: Wait for app
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:8000/docs >/dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "App did not become ready in time"
+          exit 1
+
+      - name: Install UI toolchain for Playwright
+        run: |
+          cd ui
+          npm ci --no-fund --no-audit
+          npx playwright install chromium
+
+      - name: Visual snapshot review (non-blocking)
+        run: bash scripts/run_playwright_visual_ci.sh
+
+      - name: Upload visual review artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-visual-review
+          path: |
+            ui/test-results
+            ui/playwright-report
+            ui/src/tests/e2e/visual-review.spec.ts-snapshots
+          if-no-files-found: ignore
