@@ -1,4 +1,5 @@
 import time
+import uuid
 
 import jwt
 import pytest
@@ -19,7 +20,6 @@ from tests.conftest import (
     TEST_SAMPLE_TOKEN,
     TEST_TEST_RUNNER_TOKEN,
     TEST_TENANT_ADMIN_TOKEN,
-    TEST_TEST_RUNNER_TOKEN,
 )
 from tests.test_admin import auth_header
 
@@ -186,14 +186,50 @@ def test_audit_viewer_denied_admin_write():
 def test_config_operator_can_deactivate_checkpoint():
     from engine.main import app
 
-    client = TestClient(app)
-    checkpoint_id = "22222222-2222-2222-2222-222222222205"
-    response = client.post(
-        f"/ui/checkpoints/{checkpoint_id}/deactivate",
-        headers=auth_header(TEST_CONFIG_OPERATOR_TOKEN),
-        json={"promotion_reason": "Permission boundary deactivate test"},
+    admin = TestClient(app)
+    checkpoint_name = f"permission-boundary-{uuid.uuid4().hex[:8]}"
+    created = admin.post(
+        "/ui/checkpoints",
+        headers=auth_header(TEST_ADMIN_TOKEN),
+        json={
+            "tenant_id": SAMPLE_TENANT,
+            "name": checkpoint_name,
+            "description": "Scratch checkpoint for config:deactivate permission test",
+            "type": "fixture",
+            "dsl_expression": "True",
+            "method_of_call": "http://127.0.0.1:8000/mock/fixture",
+            "max_cost": 10,
+            "override_cost_flag": False,
+            "timeout_seconds": 30,
+        },
     )
-    assert response.status_code == 200
+    assert created.status_code == 200
+    checkpoint_id = created.json()["id"]
+
+    promoted = admin.post(
+        f"/ui/checkpoints/{checkpoint_id}/make_current",
+        headers=auth_header(TEST_ADMIN_TOKEN),
+        json={"promotion_reason": "Permission boundary scratch setup"},
+    )
+    assert promoted.status_code == 200
+
+    deactivated = False
+    try:
+        response = admin.post(
+            f"/ui/checkpoints/{checkpoint_id}/deactivate",
+            headers=auth_header(TEST_CONFIG_OPERATOR_TOKEN),
+            json={"promotion_reason": "Permission boundary deactivate test"},
+        )
+        assert response.status_code == 200
+        deactivated = True
+    finally:
+        if deactivated:
+            cleanup = admin.post(
+                f"/ui/checkpoints/{checkpoint_id}/reactivate",
+                headers=auth_header(TEST_ADMIN_TOKEN),
+                json={"promotion_reason": "Permission boundary scratch cleanup"},
+            )
+            assert cleanup.status_code == 200
 
 
 def test_config_operator_denied_tenant_manage():

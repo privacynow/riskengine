@@ -51,6 +51,15 @@ WHERE NOT EXISTS (
   SELECT 1 FROM checkpoint_signals WHERE id = 'f2f2f2f2-f2f2-f2f2-f2f2f2f2f2f2f2f2'
 );
 
+INSERT INTO signal_current_version (tenant_id, name, signal_id)
+SELECT
+  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+  'lifecycle_e2e_signal',
+  'f1f1f1f1-f1f1-f1f1-f1f1-f1f1f1f1f1f1'
+ON CONFLICT (tenant_id, name) DO UPDATE
+   SET signal_id = EXCLUDED.signal_id,
+       updated_at = NOW();
+
 INSERT INTO checkpoint_current_version (tenant_id, name, checkpoint_id)
 SELECT
   'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',

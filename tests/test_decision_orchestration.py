@@ -461,3 +461,109 @@ class TestDecisionAuditDurability:
                 conn.commit()
             cur.close()
             conn.close()
+
+    def test_caching_signal_does_not_commit_pending_before_finalize(self, monkeypatch):
+        from dataclasses import replace
+
+        from engine.cache import in_memory_signal_cache
+        from engine.db import get_db_connection
+        from engine.services import decision as decision_mod
+        from engine.services.tenancy import CheckpointRow
+
+        signal_id = "33333333-3333-3333-3333-333333333301"
+
+        async def true_invoke(**kwargs):
+            return True
+
+        monkeypatch.setattr(decision_mod, "invoke_signal", true_invoke)
+        monkeypatch.setattr(
+            decision_mod,
+            "fetch_executable_signal_rows",
+            lambda cur, tenant_id, checkpoint_id: [
+                replace(
+                    _expression_signal("cached_audit_signal", expression_body="True"),
+                    id=signal_id,
+                    allow_caching=True,
+                    cache_expiration_seconds=300,
+                )
+            ],
+        )
+        monkeypatch.setattr(
+            decision_mod,
+            "fetch_checkpoint_row_by_id",
+            lambda cur, tenant_id, checkpoint_id: CheckpointRow(
+                id=checkpoint_id,
+                tenant_id=tenant_id,
+                name="audit-durability-cache-test",
+                description=None,
+                type="onboarding",
+                dsl_expression="cached_audit_signal",
+                method_of_call=None,
+                max_cost=10,
+                override_cost_flag=True,
+                timeout_seconds=30,
+            ),
+        )
+
+        def fail_before_finalize(cur, items):
+            raise RuntimeError("forced failure before decision finalize")
+
+        monkeypatch.setattr(decision_mod, "persist_signal_logs", fail_before_finalize)
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+        applicant_id = f"audit-durability-fail-{uuid.uuid4().hex[:8]}"
+        try:
+            with pytest.raises(RuntimeError, match="forced failure before decision finalize"):
+                asyncio.run(
+                    execute_decision(
+                        conn,
+                        cur,
+                        SAMPLE_TENANT,
+                        DecisionRequest(
+                            checkpoint_name="audit-durability-cache-test",
+                            applicant_id=applicant_id,
+                        ),
+                        checkpoint_id=SAMPLE_ONBOARDING_CHECKPOINT,
+                    )
+                )
+            conn.rollback()
+            cur.execute(
+                """
+                SELECT COUNT(*)
+                  FROM decision_log
+                 WHERE applicant_id = %s
+                   AND final_decision_value = 'PENDING'
+                """,
+                (applicant_id,),
+            )
+            assert cur.fetchone()[0] == 0
+            cur.execute(
+                """
+                SELECT COUNT(*)
+                  FROM signal_cached_values
+                 WHERE tenant_id = %s
+                   AND checkpoint_id = %s
+                   AND signal_id = %s
+                   AND applicant_id = %s
+                """,
+                (
+                    SAMPLE_TENANT,
+                    SAMPLE_ONBOARDING_CHECKPOINT,
+                    signal_id,
+                    applicant_id,
+                ),
+            )
+            assert cur.fetchone()[0] == 0
+            assert (
+                in_memory_signal_cache.get(
+                    SAMPLE_TENANT,
+                    SAMPLE_ONBOARDING_CHECKPOINT,
+                    applicant_id,
+                    signal_id,
+                )
+                is None
+            )
+        finally:
+            cur.close()
+            conn.close()

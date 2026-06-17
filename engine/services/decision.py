@@ -91,6 +91,7 @@ async def execute_decision(
     checkpoint_timed_out = False
 
     pending_signal_logs: list[dict[str, Any]] = []
+    pending_memory_cache_writes: list[tuple[Any, ...]] = []
 
     signals_by_order: Dict[int, list] = defaultdict(list)
     for signal in signals:
@@ -283,52 +284,55 @@ async def execute_decision(
                 error_message = str(exc)
 
             if row.allow_caching and success:
-                in_memory_signal_cache.set(
-                    tenant_id,
-                    checkpoint_id,
-                    applicant_key,
-                    row.id,
-                    value,
-                    row.cache_expiration_seconds,
-                )
-                cur3 = conn.cursor()
-                expires_at = datetime.utcnow() + timedelta(seconds=row.cache_expiration_seconds)
-                val_str = str(value)
-                cur3.execute(
-                    """
-                    INSERT INTO signal_cached_values
-                    (id, tenant_id, checkpoint_id, signal_id, applicant_id, signal_value, expires_at)
-                    VALUES (uuid_generate_v4(), %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT DO NOTHING
-                    """,
-                    (tenant_id, checkpoint_id, row.id, applicant_key, val_str, expires_at),
-                )
-                cur3.execute(
-                    """
-                    UPDATE signal_cached_values
-                       SET signal_value = %s,
-                           expires_at = %s,
-                           updated_at = NOW()
-                     WHERE tenant_id = %s
-                       AND checkpoint_id = %s
-                       AND signal_id = %s
-                       AND (
-                         (applicant_id IS NULL AND %s IS NULL)
-                         OR (applicant_id = %s)
-                       )
-                    """,
+                pending_memory_cache_writes.append(
                     (
-                        val_str,
-                        expires_at,
                         tenant_id,
                         checkpoint_id,
+                        applicant_key,
                         row.id,
-                        applicant_key,
-                        applicant_key,
-                    ),
+                        value,
+                        row.cache_expiration_seconds,
+                    )
                 )
-                conn.commit()
-                cur3.close()
+                cur3 = conn.cursor()
+                try:
+                    expires_at = datetime.utcnow() + timedelta(seconds=row.cache_expiration_seconds)
+                    val_str = str(value)
+                    cur3.execute(
+                        """
+                        INSERT INTO signal_cached_values
+                        (id, tenant_id, checkpoint_id, signal_id, applicant_id, signal_value, expires_at)
+                        VALUES (uuid_generate_v4(), %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT DO NOTHING
+                        """,
+                        (tenant_id, checkpoint_id, row.id, applicant_key, val_str, expires_at),
+                    )
+                    cur3.execute(
+                        """
+                        UPDATE signal_cached_values
+                           SET signal_value = %s,
+                               expires_at = %s,
+                               updated_at = NOW()
+                         WHERE tenant_id = %s
+                           AND checkpoint_id = %s
+                           AND signal_id = %s
+                           AND (
+                             (applicant_id IS NULL AND %s IS NULL)
+                             OR (applicant_id = %s)
+                           )
+                        """,
+                        (
+                            val_str,
+                            expires_at,
+                            tenant_id,
+                            checkpoint_id,
+                            row.id,
+                            applicant_key,
+                            applicant_key,
+                        ),
+                    )
+                finally:
+                    cur3.close()
 
         ended = datetime.utcnow()
         enqueue_signal_log(
@@ -438,6 +442,15 @@ async def execute_decision(
         (final_decision_val, total_cost, decision_id),
     )
     conn.commit()
+    for cache_tenant_id, cache_checkpoint_id, cache_applicant_key, cache_signal_id, cache_value, cache_ttl in pending_memory_cache_writes:
+        in_memory_signal_cache.set(
+            cache_tenant_id,
+            cache_checkpoint_id,
+            cache_applicant_key,
+            cache_signal_id,
+            cache_value,
+            cache_ttl,
+        )
 
     return DecisionResponse(
         decision_id=decision_id,

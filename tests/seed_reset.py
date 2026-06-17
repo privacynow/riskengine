@@ -117,6 +117,7 @@ _TEST_CHECKPOINT_NAME_PATTERNS = (
     "dup-assoc-guard-%",
     "cross-tenant-link-%",
     "promotion-%",
+    "permission-boundary-%",
     "mutation-envelope-test",
     "cross-tenant-assoc-test",
     "invalid-%",

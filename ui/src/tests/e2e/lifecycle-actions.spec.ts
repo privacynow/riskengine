@@ -6,9 +6,14 @@ import {
   selectVisualFixtureTenant,
 } from "./helpers";
 import { LIFECYCLE_E2E_FIXTURE } from "./lifecycle-fixture";
+import { ensureLifecycleFixtureActive } from "./lifecycle-cleanup";
 
 test.beforeAll(() => {
   requireAdminToken();
+});
+
+test.afterEach(async ({ request }) => {
+  await ensureLifecycleFixtureActive(request);
 });
 
 test("checkpoint lifecycle: deactivate and reactivate scratch checkpoint", async ({ page }) => {
