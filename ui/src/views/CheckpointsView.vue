@@ -1,32 +1,32 @@
 <template>
   <div class="checkpoints-view">
     <PageHeader
-      title="Decision Flows"
+      title="Checkpoints"
       subtitle="Design checkpoints, wire signals, and manage versions."
     />
 
     <DataToolbar>
       <select v-model="activeFilter" class="toolbar-select">
         <option value="active">Active only</option>
-        <option value="all">All flows</option>
+        <option value="all">All checkpoints</option>
       </select>
       <input
         v-model="searchTerm"
         type="search"
-        placeholder="Search decision flows"
+        placeholder="Search checkpoints"
         class="toolbar-grow"
       />
       <button type="button" class="btn-secondary" @click="search(1)">Search</button>
       <button type="button" class="btn-secondary" @click="loadAll(1)">Load all</button>
       <button type="button" class="btn-primary" @click="toggleCreateForm">
-        {{ showCreateForm ? "Close" : "New flow" }}
+        {{ showCreateForm ? "Close" : "New checkpoint" }}
       </button>
     </DataToolbar>
 
     <EmptyState
       v-if="!activeTenant"
       title="Select a tenant"
-      message="Use the tenant bar above to scope decision flows."
+      message="Use the tenant bar above to scope checkpoints."
     />
 
     <div v-else>
@@ -50,17 +50,19 @@
         <template #master>
           <div v-if="items.length" class="card workbench-list-card">
             <div class="list-row-stack">
-              <FlowListRow
+              <CheckpointListRow
                 v-for="cp in items"
                 :key="cp.id"
                 :checkpoint="cp"
                 :selected="selectedId === cp.id"
-                @open="openFlow(cp.id)"
+                @open="openCheckpoint(cp.id)"
                 @promote="setCurrentVersion(cp.id)"
+                @deactivate="deactivateVersion(cp.id)"
+                @reactivate="reactivateVersion(cp.id)"
               />
             </div>
           </div>
-          <EmptyState v-else title="No decision flows" message="Create a flow for this tenant." />
+          <EmptyState v-else title="No checkpoints" message="Create a checkpoint for this tenant." />
 
           <AppPagination
             :page="page"
@@ -81,7 +83,33 @@
                 "
               />
             </div>
-            <button type="button" class="btn-ghost btn-sm" @click="closePanel">Close</button>
+            <div class="workbench-detail-actions">
+              <button
+                v-if="selectedCheckpoint.is_current_version"
+                type="button"
+                class="btn-secondary btn-sm"
+                @click="deactivateVersion(selectedCheckpoint.id)"
+              >
+                Deactivate
+              </button>
+              <button
+                v-else-if="canPromoteSelected"
+                type="button"
+                class="btn-secondary btn-sm"
+                @click="setCurrentVersion(selectedCheckpoint.id)"
+              >
+                Promote
+              </button>
+              <button
+                v-else-if="canReactivateSelected"
+                type="button"
+                class="btn-secondary btn-sm"
+                @click="reactivateVersion(selectedCheckpoint.id)"
+              >
+                Reactivate
+              </button>
+              <button type="button" class="btn-ghost btn-sm" @click="closePanel">Close</button>
+            </div>
           </div>
 
           <WorkbenchTabs v-model="detailTab" :tabs="detailTabs" />
@@ -103,6 +131,19 @@
               :show-signals="false"
               @save="onDetailSave"
               @cancel="resetDetailDraft"
+            />
+
+            <VersionHistoryPanel
+              v-else-if="detailTab === 'versions' && selectedCheckpoint"
+              resource-type="checkpoint"
+              :resource-id="selectedCheckpoint.id"
+              :resource-name="selectedCheckpoint.name"
+              :versions="versionHistory"
+              :loading="versionHistoryLoading"
+              diff-field="dsl_expression"
+              @promote="setCurrentVersion"
+              @deactivate="deactivateVersion"
+              @reactivate="reactivateVersion"
             />
 
             <CheckpointForm
@@ -129,17 +170,19 @@ import { computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
 import type { CheckpointDraft } from "@/api/types";
+import { canPromoteVersion, canReactivateVersion } from "@/api/formatters";
 import { routeWithTenant } from "@/app/tenantNav";
 import DataToolbar from "@/components/primitives/DataToolbar.vue";
 import EmptyState from "@/components/primitives/EmptyState.vue";
 import AppPagination from "@/components/primitives/AppPagination.vue";
 import CheckpointForm from "@/components/domain/checkpoints/CheckpointForm.vue";
 import PageHeader from "@/components/workbench/PageHeader.vue";
-import FlowListRow from "@/components/workbench/FlowListRow.vue";
+import CheckpointListRow from "@/components/workbench/CheckpointListRow.vue";
 import WorkbenchLayout from "@/components/workbench/WorkbenchLayout.vue";
 import WorkbenchTabs from "@/components/workbench/WorkbenchTabs.vue";
 import StatusBadge from "@/components/workbench/StatusBadge.vue";
 import LoadingSkeleton from "@/components/workbench/LoadingSkeleton.vue";
+import VersionHistoryPanel from "@/components/workbench/VersionHistoryPanel.vue";
 import { useCheckpointStore } from "@/stores/checkpointStore";
 import { useTenantStore } from "@/stores/tenantStore";
 
@@ -160,15 +203,24 @@ const {
   selectedId,
   detailTab,
   detailDraft,
+  versionHistory,
+  versionHistoryLoading,
 } = storeToRefs(checkpointStore);
 
 const { activeTenant } = storeToRefs(tenantStore);
 
 const selectedCheckpoint = computed(() => checkpointStore.selectedCheckpoint);
+const canPromoteSelected = computed(() =>
+  selectedCheckpoint.value ? canPromoteVersion(selectedCheckpoint.value) : false
+);
+const canReactivateSelected = computed(() =>
+  selectedCheckpoint.value ? canReactivateVersion(selectedCheckpoint.value) : false
+);
 
 const detailTabs = [
   { id: "summary", label: "Summary" },
   { id: "config", label: "DSL & policy" },
+  { id: "versions", label: "Versions" },
   { id: "signals", label: "Signals" },
 ];
 
@@ -182,6 +234,8 @@ const {
   saveDetail,
   persistDetailAssociations,
   setCurrentVersion,
+  deactivateVersion,
+  reactivateVersion,
   loadDraftSignals,
   addSignalToDraft,
   removeSignalFromDraft,
@@ -203,7 +257,7 @@ watch(
   { immediate: true }
 );
 
-function openFlow(id: string) {
+function openCheckpoint(id: string) {
   router.push(routeWithTenant({ name: "checkpoint-detail", params: { checkpointId: id } }));
 }
 

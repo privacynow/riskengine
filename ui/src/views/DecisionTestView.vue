@@ -2,14 +2,14 @@
   <div class="decision-test-view">
     <PageHeader
       title="Test Lab"
-      subtitle="Controlled pre-promotion harness for decision flows."
+      subtitle="Controlled pre-promotion harness for checkpoints."
     />
 
     <DataToolbar>
       <input
         v-model="searchTerm"
         type="search"
-        placeholder="Search decision flows"
+        placeholder="Search checkpoints"
         class="toolbar-grow"
       />
       <button type="button" class="btn-secondary" @click="search(1)">Search</button>
@@ -26,22 +26,22 @@
 
     <EmptyState
       v-else-if="!checkpoints.length"
-      title="No decision flows loaded"
-      message="Search flows, select one, and run a test."
+      title="No checkpoints loaded"
+      message="Search checkpoints, select one, and run a test."
     />
 
     <WorkbenchLayout v-else :split="!!selectedCheckpointId">
       <template #master>
         <div class="card workbench-list-card">
           <div class="list-row-stack">
-            <FlowListRow
-              v-for="cp in checkpoints"
-              :key="cp.id"
-              :checkpoint="cp"
-              :selected="selectedCheckpointId === cp.id"
-              :promotable="false"
-              @open="selectCheckpoint(cp.id)"
-            />
+              <CheckpointListRow
+                v-for="cp in checkpoints"
+                :key="cp.id"
+                :checkpoint="cp"
+                :selected="selectedCheckpointId === cp.id"
+                :promotable="false"
+                @open="selectCheckpoint(cp.id)"
+              />
           </div>
         </div>
 
@@ -71,16 +71,16 @@
             </div>
             <RouterLink
               class="btn-secondary btn-sm"
-              :to="flowDetailLink"
+              :to="checkpointDetailLink"
             >
-              Open flow
+              Open checkpoint
             </RouterLink>
           </div>
 
           <FormSection title="DSL preflight" subtitle="Validate expression before promotion">
             <DslPreflightPanel
               :expression="activeCheckpoint.dsl_expression ?? ''"
-              :signal-names="harnessSignalNames"
+              :checkpoint-id="activeCheckpoint.id"
             />
             <pre class="code-block code-block--compact">{{ activeCheckpoint.dsl_expression }}</pre>
           </FormSection>
@@ -118,7 +118,7 @@
 
           <FormSection title="Run test">
             <p class="field-hint">
-              Executes the selected flow version server-side without promoting it live.
+              Executes the selected checkpoint version server-side without promoting it live.
             </p>
             <div class="form-actions">
               <button
@@ -155,7 +155,7 @@ import AppPagination from "@/components/primitives/AppPagination.vue";
 import PageHeader from "@/components/workbench/PageHeader.vue";
 import WorkbenchLayout from "@/components/workbench/WorkbenchLayout.vue";
 import FieldRow from "@/components/workbench/FieldRow.vue";
-import FlowListRow from "@/components/workbench/FlowListRow.vue";
+import CheckpointListRow from "@/components/workbench/CheckpointListRow.vue";
 import StatusBadge from "@/components/workbench/StatusBadge.vue";
 import FormSection from "@/components/workbench/FormSection.vue";
 import DslPreflightPanel from "@/components/workbench/DslPreflightPanel.vue";
@@ -189,13 +189,7 @@ const activeCheckpoint = computed(() =>
   checkpoints.value.find((cp) => cp.id === selectedCheckpointId.value)
 );
 
-const harnessSignalNames = computed(() => {
-  const cpId = activeCheckpoint.value?.id;
-  if (!cpId) return [];
-  return (assocSignals.value[cpId] || []).map((sig) => sig.name);
-});
-
-const flowDetailLink = computed(() =>
+const checkpointDetailLink = computed(() =>
   activeCheckpoint.value
     ? routeWithTenant({
         name: "checkpoint-detail",

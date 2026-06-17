@@ -21,6 +21,9 @@ export const checkpointsApi = {
       `/ui/search_checkpoints${buildQuery(params)}`
     );
   },
+  listVersions(id: string) {
+    return httpJson<{ items: Checkpoint[] }>(`/ui/checkpoints/${id}/versions`);
+  },
   get(id: string) {
     return httpJson<Checkpoint>(`/ui/checkpoints/${id}`);
   },
@@ -40,6 +43,20 @@ export const checkpointsApi = {
   },
   makeCurrent(id: string, payload: { promotionReason: string }) {
     return httpJson<unknown>(`/ui/checkpoints/${id}/make_current`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  },
+  deactivate(id: string, payload: { promotionReason: string }) {
+    return httpJson<unknown>(`/ui/checkpoints/${id}/deactivate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  },
+  reactivate(id: string, payload: { promotionReason: string }) {
+    return httpJson<unknown>(`/ui/checkpoints/${id}/reactivate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),

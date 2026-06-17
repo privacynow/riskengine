@@ -8,6 +8,10 @@ from tests.conftest import OTHER_TENANT, SAMPLE_TENANT, TEST_ADMIN_TOKEN, TEST_S
 from tests.seed_reset import SEED_CHECKPOINT_CURRENT
 
 SEED_ONBOARDING_CHECKPOINT = SEED_CHECKPOINT_CURRENT[SAMPLE_TENANT]["Onboarding"]
+SEED_FUNDS_DISBURSEMENT_CHECKPOINT = SEED_CHECKPOINT_CURRENT[SAMPLE_TENANT]["Funds Disbursement"]
+FUNDS_DISBURSEMENT_DSL = (
+    "disbursement_limit_check and (previous_delinquency == 0) and credit_pass"
+)
 
 
 @pytest.fixture
@@ -144,12 +148,8 @@ class TestAdminHygiene:
                 conn.commit()
 
     def test_create_checkpoint_with_associated_signals(self, client):
-        signals = client.get(
-            f"/ui/signals?tenant_id={SAMPLE_TENANT}&page=1&size=50",
-            headers=auth_header(TEST_ADMIN_TOKEN),
-        ).json()["items"]
-        age_check = next(item for item in signals if item["name"] == "age_check")
-        blocklist = next(item for item in signals if item["name"] == "blocklist_check")
+        age_check_id = "33333333-3333-3333-3333-333333333301"
+        blocklist_id = "33333333-3333-3333-3333-333333333302"
 
         created = client.post(
             "/ui/checkpoints",
@@ -159,7 +159,7 @@ class TestAdminHygiene:
                 "name": "assoc-create-test",
                 "type": "onboarding",
                 "dsl_expression": "age_check and not blocklist_check",
-                "signals": [age_check["id"], blocklist["id"]],
+                "signals": [age_check_id, blocklist_id],
             },
         )
         assert created.status_code == 200
@@ -520,11 +520,13 @@ class TestAdminHygiene:
         ).json()
         assert current["name"] == "Onboarding"
         assert current["is_current_version"] is True
+        assert current["name_has_current_version"] is True
         detail = client.get(
             f"/ui/checkpoints/{current['id']}",
             headers=auth_header(TEST_ADMIN_TOKEN),
         ).json()
         assert detail["is_current_version"] is True
+        assert detail["name_has_current_version"] is True
 
     def test_admin_get_signal_includes_is_current_version(self, client):
         listed = client.get(
@@ -563,7 +565,7 @@ class TestAdminHygiene:
             },
         )
         assert by_name.status_code == 200
-        assert by_name.json()["final_decision_value"] == "True"
+        assert by_name.json()["decision_outcome"] == "APPROVE"
 
         by_id = client.post(
             "/ui/test_decisions",
@@ -576,7 +578,7 @@ class TestAdminHygiene:
             },
         )
         assert by_id.status_code == 200
-        assert by_id.json()["final_decision_value"] == "False"
+        assert by_id.json()["decision_outcome"] == "DECLINE"
 
     def test_search_decisions_includes_checkpoint_name_and_tenant_filter(self, client):
         resp = client.get(
@@ -630,10 +632,10 @@ class TestAdminHygiene:
                         """
                         INSERT INTO decision_log (
                             id, checkpoint_id, tenant_id, applicant_id,
-                            final_decision_value, cost_incurred, correlation_id,
+                            final_decision_value, decision_outcome, cost_incurred, correlation_id,
                             decision_timestamp
                         )
-                        VALUES (%s, %s, %s, %s, 'True', 0, %s, NOW() - (%s * INTERVAL '1 minute'))
+                        VALUES (%s, %s, %s, %s, 'APPROVE', 'APPROVE', 0, %s, NOW() - (%s * INTERVAL '1 minute'))
                         """,
                         (
                             decision_id,
@@ -730,6 +732,45 @@ class TestAdminHygiene:
         )
         assert bad.status_code == 200
         assert bad.json()["ok"] is False
+
+    def test_dsl_preflight_resolves_linked_signals_from_checkpoint_id(self, client):
+        resp = client.post(
+            "/ui/dsl_preflight",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "dsl_expression": FUNDS_DISBURSEMENT_DSL,
+                "checkpoint_id": SEED_FUNDS_DISBURSEMENT_CHECKPOINT,
+                "signal_names": [],
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+
+    def test_dsl_preflight_empty_names_without_checkpoint_id_fails(self, client):
+        resp = client.post(
+            "/ui/dsl_preflight",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "dsl_expression": FUNDS_DISBURSEMENT_DSL,
+                "signal_names": [],
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ok"] is False
+        assert any("credit_pass" in err for err in body["errors"])
+
+    def test_dsl_preflight_new_checkpoint_draft_requires_client_signal_names(self, client):
+        resp = client.post(
+            "/ui/dsl_preflight",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "dsl_expression": "age_check and kyc_score > 80",
+                "signal_names": [],
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is False
 
     def test_admin_mutation_response_envelope(self, client):
         resp = client.post(
@@ -899,13 +940,14 @@ class TestAdminHygiene:
                     """
                     INSERT INTO decision_log (
                         id, checkpoint_id, tenant_id, applicant_id,
-                        final_decision_value, cost_incurred, correlation_id
+                        final_decision_value, decision_outcome, cost_incurred, correlation_id
                     ) VALUES (
                         %s,
                         '22222222-2222-2222-2222-222222222201',
                         %s,
                         'param-redaction-test',
-                        'PENDING',
+                        'INCOMPLETE',
+                        'INCOMPLETE',
                         0,
                         'param-redaction-correlation'
                     )
@@ -1000,13 +1042,14 @@ class TestAdminHygiene:
                     """
                     INSERT INTO decision_log (
                         id, checkpoint_id, tenant_id, applicant_id,
-                        final_decision_value, cost_incurred, correlation_id
+                        final_decision_value, decision_outcome, cost_incurred, correlation_id
                     ) VALUES (
                         %s,
                         '22222222-2222-2222-2222-222222222201',
                         %s,
                         'admin-log-redaction-test',
-                        'PENDING',
+                        'INCOMPLETE',
+                        'INCOMPLETE',
                         0,
                         'admin-log-redaction-correlation'
                     )
@@ -1110,6 +1153,7 @@ class TestAdminHygiene:
             headers=auth_header(TEST_ADMIN_TOKEN),
         ).json()
         assert detail["is_current_version"] is False
+        assert detail["name_has_current_version"] is False
 
         runtime = client.post(
             "/decisions",
@@ -1125,6 +1169,11 @@ class TestAdminHygiene:
         )
         assert reactivated.status_code == 200
         assert reactivated.json()["action"] == "reactivated"
+        after_reactivate = client.get(
+            f"/ui/checkpoints/{checkpoint_id}",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        ).json()
+        assert after_reactivate["name_has_current_version"] is True
 
         audit = client.get(
             f"/ui/promotion_audit?tenant_id={SAMPLE_TENANT}&q={detail['name']}&page=1&size=10",
@@ -1170,6 +1219,13 @@ class TestAdminHygiene:
             headers=auth_header(TEST_ADMIN_TOKEN),
             json={"promotionReason": "Promote second version"},
         ).status_code == 200
+
+        stale_detail = client.get(
+            f"/ui/checkpoints/{first_id}",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+        ).json()
+        assert stale_detail["is_current_version"] is False
+        assert stale_detail["name_has_current_version"] is True
 
         reactivate = client.post(
             f"/ui/checkpoints/{first_id}/reactivate",

@@ -2,7 +2,7 @@
   <div class="signals-view">
     <PageHeader
       title="Signal Library"
-      subtitle="Configure connectors, functions, and variables for decision flows."
+      subtitle="Configure connectors, functions, and variables for checkpoints."
     />
 
     <DataToolbar>
@@ -47,6 +47,8 @@
                 :selected="selectedId === s.id"
                 @open="openSignal(s.id)"
                 @promote="setCurrentVersion(s.id)"
+                @deactivate="deactivateVersion(s.id)"
+                @reactivate="reactivateVersion(s.id)"
               />
             </div>
           </div>
@@ -69,7 +71,33 @@
                 :text="selectedSignal.is_current_version ? 'Current version' : 'Inactive version'"
               />
             </div>
-            <button type="button" class="btn-ghost btn-sm" @click="closePanel">Close</button>
+            <div class="workbench-detail-actions">
+              <button
+                v-if="selectedSignal.is_current_version"
+                type="button"
+                class="btn-secondary btn-sm"
+                @click="deactivateVersion(selectedSignal.id)"
+              >
+                Deactivate
+              </button>
+              <button
+                v-else-if="canPromoteSelected"
+                type="button"
+                class="btn-secondary btn-sm"
+                @click="setCurrentVersion(selectedSignal.id)"
+              >
+                Promote
+              </button>
+              <button
+                v-else-if="canReactivateSelected"
+                type="button"
+                class="btn-secondary btn-sm"
+                @click="reactivateVersion(selectedSignal.id)"
+              >
+                Reactivate
+              </button>
+              <button type="button" class="btn-ghost btn-sm" @click="closePanel">Close</button>
+            </div>
           </div>
 
           <WorkbenchTabs v-model="detailTab" :tabs="detailTabs" />
@@ -85,17 +113,30 @@
               @cancel="resetDetailDraft"
             />
 
+            <VersionHistoryPanel
+              v-else-if="detailTab === 'versions' && selectedSignal"
+              resource-type="signal"
+              :resource-id="selectedSignal.id"
+              :resource-name="selectedSignal.name"
+              :versions="versionHistory"
+              :loading="versionHistoryLoading"
+              diff-field="expression_body"
+              @promote="setCurrentVersion"
+              @deactivate="deactivateVersion"
+              @reactivate="reactivateVersion"
+            />
+
             <div v-else-if="detailTab === 'associations'">
-              <FormSection title="Used by decision flows">
+              <FormSection title="Used by checkpoints">
                 <AssociationPicker
-                  :linked-items="linkedFlows"
+                  :linked-items="linkedCheckpoints"
                   :candidates="checkpointCandidatesForSelected"
                   :search-query="checkpointSearchForSelected"
                   :page="checkpointPageForSelected"
                   :total-pages="checkpointTotalPagesForSelected"
                   :show-type="false"
-                  empty-message="Not linked to any decision flows."
-                  search-placeholder="Search flows to link…"
+                  empty-message="Not linked to any checkpoints."
+                  search-placeholder="Search checkpoints to link…"
                   @remove="(id) => removeAssociation(selectedId!, id)"
                   @add="(id) => associateCheckpoint(selectedId!, id)"
                   @search="onCheckpointSearch"
@@ -126,6 +167,7 @@ import { computed, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
 import type { SignalDraft } from "@/api/types";
+import { canPromoteVersion, canReactivateVersion } from "@/api/formatters";
 import { routeWithTenant } from "@/app/tenantNav";
 import DataToolbar from "@/components/primitives/DataToolbar.vue";
 import EmptyState from "@/components/primitives/EmptyState.vue";
@@ -141,6 +183,7 @@ import StatusBadge from "@/components/workbench/StatusBadge.vue";
 import FormSection from "@/components/workbench/FormSection.vue";
 import AssociationPicker from "@/components/workbench/AssociationPicker.vue";
 import LoadingSkeleton from "@/components/workbench/LoadingSkeleton.vue";
+import VersionHistoryPanel from "@/components/workbench/VersionHistoryPanel.vue";
 import { useSignalStore } from "@/stores/signalStore";
 import { useTenantStore } from "@/stores/tenantStore";
 
@@ -162,6 +205,8 @@ const {
   detailTab,
   detailDraft,
   detailAssociatedCheckpoints,
+  versionHistory,
+  versionHistoryLoading,
   checkpointSearch,
   checkpointCandidates,
   checkpointCandidatePage,
@@ -171,15 +216,22 @@ const {
 const { activeTenant } = storeToRefs(tenantStore);
 
 const selectedSignal = computed(() => signalStore.selectedSignal);
+const canPromoteSelected = computed(() =>
+  selectedSignal.value ? canPromoteVersion(selectedSignal.value) : false
+);
+const canReactivateSelected = computed(() =>
+  selectedSignal.value ? canReactivateVersion(selectedSignal.value) : false
+);
 
 const detailTabs = [
   { id: "summary", label: "Summary" },
   { id: "config", label: "Configuration" },
-  { id: "associations", label: "Flows" },
+  { id: "versions", label: "Versions" },
+  { id: "associations", label: "Checkpoints" },
   { id: "variables", label: "Values" },
 ];
 
-const linkedFlows = computed(() =>
+const linkedCheckpoints = computed(() =>
   detailAssociatedCheckpoints.value.map((cp) => ({ id: cp.id, name: cp.name }))
 );
 
@@ -212,6 +264,8 @@ const {
   closeDetail,
   saveDetail,
   setCurrentVersion,
+  deactivateVersion,
+  reactivateVersion,
   removeAssociation,
   associateCheckpoint,
   searchCheckpointsForEdit,

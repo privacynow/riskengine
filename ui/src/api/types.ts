@@ -31,6 +31,8 @@ export type Checkpoint = {
   override_cost_flag?: boolean;
   timeout_seconds?: number;
   is_current_version?: boolean;
+  name_has_current_version?: boolean;
+  updated_at?: string;
 };
 
 export type Signal = {
@@ -55,7 +57,9 @@ export type Signal = {
   global_reuse?: boolean;
   function_params_template?: string;
   is_current_version?: boolean;
+  name_has_current_version?: boolean;
   param_placeholders?: string[];
+  updated_at?: string;
 };
 
 export type CheckpointSignal = {
@@ -64,6 +68,11 @@ export type CheckpointSignal = {
   signal_id: string;
   checkpoint_name?: string;
   signal_name?: string;
+  priority_override?: number | null;
+  criticality?: string;
+  execution_role?: string;
+  stage_override?: number | null;
+  vendor_audit_after_decline?: boolean;
 };
 
 export type DecisionSummary = {
@@ -74,6 +83,9 @@ export type DecisionSummary = {
   applicant_id?: string;
   correlation_id?: string;
   final_decision_value?: string;
+  decision_outcome?: string;
+  decision_reason?: string;
+  degraded?: boolean;
   cost_incurred?: number;
   decision_timestamp?: string;
   /** @deprecated use decision_timestamp */
@@ -124,6 +136,9 @@ export type DecisionDetail = {
   applicant_id?: string;
   correlation_id?: string;
   final_decision_value?: string;
+  decision_outcome?: string;
+  decision_reason?: string;
+  degraded?: boolean;
   cost_incurred?: number;
   decision_timestamp?: string;
   signals?: DecisionSignalTrace[];
@@ -138,10 +153,33 @@ export type DecisionTestPayload = {
   parameters?: Record<string, string>;
 };
 
+export type DecisionCostSummary = {
+  estimated_units: number;
+  reserved_units: number;
+  actual_units: number;
+  budget_units?: number | null;
+  tenant_budget_remaining_units?: number | null;
+};
+
+export type SignalExecutionSummary = {
+  name: string;
+  status: string;
+  criticality: string;
+  estimated_cost_units: number;
+  reserved_cost_units: number;
+  actual_cost_units: number;
+  cache_hit: boolean;
+  skip_reason?: string | null;
+  value?: unknown;
+};
+
 export type DecisionTestResponse = {
   decision_id: string;
-  final_decision_value: string;
-  cost_incurred: number;
+  decision_outcome: string;
+  decision_reason: string;
+  degraded: boolean;
+  cost: DecisionCostSummary;
+  signals: SignalExecutionSummary[];
   signal_results: Record<string, unknown>;
 };
 
@@ -160,6 +198,7 @@ export type VariableValue = {
 };
 
 export type SignalDraft = {
+  id?: string;
   name: string;
   description: string;
   type: SignalType | string;
@@ -188,6 +227,7 @@ export type PromotionAuditSummary = {
   resource_name: string;
   actor_id: string;
   promotion_reason: string;
+  action?: "promote" | "deactivate" | "reactivate" | string;
   source?: string;
   created_at?: string;
 };
@@ -254,6 +294,7 @@ export function emptyCheckpointDraft(): CheckpointDraft {
 
 export function signalToDraft(signal: Signal): SignalDraft {
   return {
+    id: signal.id,
     name: signal.name,
     description: signal.description || "",
     type: signal.type,

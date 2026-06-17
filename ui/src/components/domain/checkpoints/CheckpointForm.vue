@@ -25,7 +25,8 @@
       </div>
       <DslPreflightPanel
         :expression="local.dsl_expression"
-        :signal-names="authoringSignalNames"
+        :checkpoint-id="createNew ? undefined : local.id || undefined"
+        :signal-names="createNew ? authoringSignalNames : []"
       />
       <div class="form-field">
         <label>Method of call</label>
@@ -70,7 +71,7 @@
     <FormSection title="Versioning & promotion" subtitle="Promotion requires an audited reason">
       <div class="rule-authoring-panel">
         <p class="field-hint">
-          Saving creates a new flow version. Promote from the flow list with a required reason —
+          Saving creates a new checkpoint version. Promote from the checkpoint list with a required reason —
           promotion is enforced server-side and recorded in the audit log.
         </p>
         <dl v-if="!createNew" class="detail-list detail-list--compact">

@@ -35,8 +35,43 @@ SEED_SIGNAL_CURRENT: dict[str, dict[str, str]] = {
         "disbursement_limit_check": "33333333-3333-3333-3333-333333333311",
         "delinquent_days": "33333333-3333-3333-3333-333333333312",
         "delinquent_severity": "33333333-3333-3333-3333-333333333313",
+        "requested_loan_amount": "33333333-3333-3333-3333-333333333314",
+        "kyc_pass": "33333333-3333-3333-3333-333333333315",
+        "credit_pass": "33333333-3333-3333-3333-333333333316",
     },
 }
+
+
+SEED_VARIABLE_VALUES: dict[str, tuple[str, str]] = {
+    "33333333-3333-3333-3333-333333333301": ("age_check", "True"),
+    "33333333-3333-3333-3333-333333333302": ("blocklist_check", "False"),
+    "33333333-3333-3333-3333-333333333303": ("previous_delinquency", "0"),
+    "33333333-3333-3333-3333-333333333304": ("active_loan", "True"),
+    "33333333-3333-3333-3333-333333333314": ("requested_loan_amount", "35000"),
+}
+
+
+def _restore_seed_variable_values(cur) -> None:
+    for signal_id, (name, value) in SEED_VARIABLE_VALUES.items():
+        cur.execute(
+            """
+            INSERT INTO signal_variable_values (id, signal_id, name, value)
+            SELECT uuid_generate_v4(), %s, %s, %s
+             WHERE NOT EXISTS (
+                    SELECT 1 FROM signal_variable_values
+                     WHERE signal_id = %s AND name = %s
+               )
+            """,
+            (signal_id, name, value, signal_id, name),
+        )
+        cur.execute(
+            """
+            UPDATE signal_variable_values
+               SET value = %s, updated_at = NOW()
+             WHERE signal_id = %s AND name = %s
+            """,
+            (value, signal_id, name),
+        )
 
 
 def _upsert_current_versions(
@@ -68,6 +103,7 @@ def reset_integration_seed_state() -> None:
         _upsert_current_versions(
             cur, "signal_current_version", "signal_id", SEED_SIGNAL_CURRENT
         )
+        _restore_seed_variable_values(cur)
         cur.execute(
             """
             DELETE FROM signal_current_version
@@ -85,10 +121,14 @@ _TEST_CHECKPOINT_NAME_PATTERNS = (
     "dup-assoc-guard-%",
     "cross-tenant-link-%",
     "promotion-%",
+    "permission-boundary-%",
     "mutation-envelope-test",
     "cross-tenant-assoc-test",
     "invalid-%",
     "authoring_e2e_%",
+    "reactivate-current-guard-%",
+    "admin-version-fork-test",
+    "assoc-create-test",
 )
 
 _TEST_SIGNAL_NAME_PATTERNS = (
@@ -97,66 +137,258 @@ _TEST_SIGNAL_NAME_PATTERNS = (
 )
 
 
+_TEST_TENANT_NAME_PATTERNS = (
+    "tenant-admin-created",
+    "COPY TEST TENANT",
+    "STALE LINK COPY TEST",
+)
+
+
+def _delete_checkpoints_by_name_pattern(cur, tenant_id: str, pattern: str) -> None:
+    cur.execute(
+        """
+        DELETE FROM checkpoint_current_version
+         WHERE tenant_id = %s
+           AND name IN (
+                SELECT name FROM checkpoints
+                 WHERE tenant_id = %s AND name LIKE %s
+           )
+        """,
+        (tenant_id, tenant_id, pattern),
+    )
+    cur.execute(
+        """
+        DELETE FROM signal_cached_values
+         WHERE checkpoint_id IN (
+                SELECT id FROM checkpoints
+                 WHERE tenant_id = %s AND name LIKE %s
+           )
+        """,
+        (tenant_id, pattern),
+    )
+    cur.execute(
+        """
+        DELETE FROM promotion_audit
+         WHERE resource_id IN (
+                SELECT id FROM checkpoints
+                 WHERE tenant_id = %s AND name LIKE %s
+           )
+        """,
+        (tenant_id, pattern),
+    )
+    cur.execute(
+        """
+        DELETE FROM checkpoint_signals
+         WHERE checkpoint_id IN (
+                SELECT id FROM checkpoints
+                 WHERE tenant_id = %s AND name LIKE %s
+           )
+        """,
+        (tenant_id, pattern),
+    )
+    cur.execute(
+        """
+        DELETE FROM signal_log_values
+         WHERE signal_log_id IN (
+                SELECT sl.id
+                  FROM signal_log sl
+                  JOIN decision_log dl ON dl.id = sl.decision_log_id
+                  JOIN checkpoints c ON c.id = dl.checkpoint_id
+                 WHERE c.tenant_id = %s AND c.name LIKE %s
+           )
+        """,
+        (tenant_id, pattern),
+    )
+    cur.execute(
+        """
+        DELETE FROM signal_log
+         WHERE decision_log_id IN (
+                SELECT dl.id
+                  FROM decision_log dl
+                  JOIN checkpoints c ON c.id = dl.checkpoint_id
+                 WHERE c.tenant_id = %s AND c.name LIKE %s
+           )
+        """,
+        (tenant_id, pattern),
+    )
+    cur.execute(
+        """
+        DELETE FROM decision_log
+         WHERE checkpoint_id IN (
+                SELECT id FROM checkpoints
+                 WHERE tenant_id = %s AND name LIKE %s
+           )
+        """,
+        (tenant_id, pattern),
+    )
+    cur.execute(
+        """
+        DELETE FROM checkpoints
+         WHERE tenant_id = %s AND name LIKE %s
+        """,
+        (tenant_id, pattern),
+    )
+
+
+def _delete_signals_by_name_pattern(cur, tenant_id: str, pattern: str) -> None:
+    cur.execute(
+        """
+        DELETE FROM signal_current_version
+         WHERE tenant_id = %s
+           AND name IN (
+                SELECT name FROM signals
+                 WHERE tenant_id = %s AND name LIKE %s
+           )
+        """,
+        (tenant_id, tenant_id, pattern),
+    )
+    cur.execute(
+        """
+        DELETE FROM checkpoint_signals
+         WHERE signal_id IN (
+                SELECT id FROM signals
+                 WHERE tenant_id = %s AND name LIKE %s
+           )
+        """,
+        (tenant_id, pattern),
+    )
+    cur.execute(
+        """
+        DELETE FROM signal_log_values
+         WHERE signal_log_id IN (
+                SELECT sl.id
+                  FROM signal_log sl
+                  JOIN signals s ON s.id = sl.signal_id
+                 WHERE s.tenant_id = %s AND s.name LIKE %s
+           )
+        """,
+        (tenant_id, pattern),
+    )
+    cur.execute(
+        """
+        DELETE FROM signal_log
+         WHERE signal_id IN (
+                SELECT id FROM signals
+                 WHERE tenant_id = %s AND name LIKE %s
+           )
+        """,
+        (tenant_id, pattern),
+    )
+    cur.execute(
+        """
+        DELETE FROM signal_variable_values
+         WHERE signal_id IN (SELECT id FROM signals WHERE tenant_id = %s AND name LIKE %s)
+        """,
+        (tenant_id, pattern),
+    )
+    cur.execute(
+        """
+        DELETE FROM signals
+         WHERE tenant_id = %s AND name LIKE %s
+        """,
+        (tenant_id, pattern),
+    )
+
+
+def _delete_test_tenant_by_name(cur, name: str) -> None:
+    cur.execute("SELECT id FROM tenants WHERE name = %s", (name,))
+    row = cur.fetchone()
+    if not row:
+        return
+    tenant_id = str(row[0])
+    if tenant_id in (SAMPLE_TENANT, OTHER_TENANT):
+        return
+    cur.execute("DELETE FROM checkpoint_current_version WHERE tenant_id = %s", (tenant_id,))
+    cur.execute("DELETE FROM signal_current_version WHERE tenant_id = %s", (tenant_id,))
+    cur.execute(
+        """
+        DELETE FROM signal_cached_values
+         WHERE checkpoint_id IN (SELECT id FROM checkpoints WHERE tenant_id = %s)
+        """,
+        (tenant_id,),
+    )
+    cur.execute(
+        """
+        DELETE FROM promotion_audit
+         WHERE tenant_id = %s
+        """,
+        (tenant_id,),
+    )
+    cur.execute(
+        """
+        DELETE FROM checkpoint_signals
+         WHERE checkpoint_id IN (SELECT id FROM checkpoints WHERE tenant_id = %s)
+        """,
+        (tenant_id,),
+    )
+    cur.execute(
+        """
+        DELETE FROM signal_log_values
+         WHERE signal_log_id IN (
+                SELECT sl.id
+                  FROM signal_log sl
+                  JOIN decision_log dl ON dl.id = sl.decision_log_id
+                 WHERE dl.checkpoint_id IN (
+                        SELECT id FROM checkpoints WHERE tenant_id = %s
+                   )
+           )
+        """,
+        (tenant_id,),
+    )
+    cur.execute(
+        """
+        DELETE FROM signal_log
+         WHERE decision_log_id IN (
+                SELECT id FROM decision_log
+                 WHERE checkpoint_id IN (
+                        SELECT id FROM checkpoints WHERE tenant_id = %s
+                   )
+           )
+        """,
+        (tenant_id,),
+    )
+    cur.execute(
+        """
+        DELETE FROM decision_log
+         WHERE checkpoint_id IN (SELECT id FROM checkpoints WHERE tenant_id = %s)
+        """,
+        (tenant_id,),
+    )
+    cur.execute("DELETE FROM checkpoints WHERE tenant_id = %s", (tenant_id,))
+    cur.execute(
+        """
+        DELETE FROM signal_variable_values
+         WHERE signal_id IN (SELECT id FROM signals WHERE tenant_id = %s)
+        """,
+        (tenant_id,),
+    )
+    cur.execute(
+        """
+        DELETE FROM signal_log_values
+         WHERE signal_log_id IN (
+                SELECT sl.id
+                  FROM signal_log sl
+                  JOIN signals s ON s.id = sl.signal_id
+                 WHERE s.tenant_id = %s
+           )
+        """,
+        (tenant_id,),
+    )
+    cur.execute(
+        """
+        DELETE FROM signal_log
+         WHERE signal_id IN (SELECT id FROM signals WHERE tenant_id = %s)
+        """,
+        (tenant_id,),
+    )
+    cur.execute("DELETE FROM signals WHERE tenant_id = %s", (tenant_id,))
+    cur.execute("DELETE FROM tenants WHERE id = %s", (tenant_id,))
+
+
 def _cleanup_test_artifacts(cur, tenant_id: str) -> None:
     for pattern in _TEST_SIGNAL_NAME_PATTERNS:
-        cur.execute(
-            """
-            DELETE FROM checkpoint_signals
-             WHERE signal_id IN (
-                    SELECT id FROM signals
-                     WHERE tenant_id = %s
-                       AND name LIKE %s
-                       AND id NOT IN (
-                            SELECT signal_id FROM signal_current_version
-                             WHERE tenant_id = %s
-                       )
-               )
-            """,
-            (tenant_id, pattern, tenant_id),
-        )
-        cur.execute(
-            """
-            DELETE FROM signals
-             WHERE tenant_id = %s
-               AND name LIKE %s
-               AND id NOT IN (
-                    SELECT signal_id FROM signal_current_version
-                     WHERE tenant_id = %s
-               )
-               AND NOT EXISTS (
-                    SELECT 1 FROM signal_log sl WHERE sl.signal_id = signals.id
-               )
-            """,
-            (tenant_id, pattern, tenant_id),
-        )
+        _delete_signals_by_name_pattern(cur, tenant_id, pattern)
     for pattern in _TEST_CHECKPOINT_NAME_PATTERNS:
-        cur.execute(
-            """
-            DELETE FROM checkpoint_signals
-             WHERE checkpoint_id IN (
-                    SELECT id FROM checkpoints
-                     WHERE tenant_id = %s
-                       AND name LIKE %s
-                       AND id NOT IN (
-                            SELECT checkpoint_id FROM checkpoint_current_version
-                             WHERE tenant_id = %s
-                       )
-               )
-            """,
-            (tenant_id, pattern, tenant_id),
-        )
-        cur.execute(
-            """
-            DELETE FROM checkpoints
-             WHERE tenant_id = %s
-               AND name LIKE %s
-               AND id NOT IN (
-                    SELECT checkpoint_id FROM checkpoint_current_version
-                     WHERE tenant_id = %s
-               )
-               AND NOT EXISTS (
-                    SELECT 1 FROM decision_log dl WHERE dl.checkpoint_id = checkpoints.id
-               )
-            """,
-            (tenant_id, pattern, tenant_id),
-        )
+        _delete_checkpoints_by_name_pattern(cur, tenant_id, pattern)
+    for name in _TEST_TENANT_NAME_PATTERNS:
+        _delete_test_tenant_by_name(cur, name)

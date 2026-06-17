@@ -35,8 +35,11 @@ export function decisionOutcomeVariant(value?: string): string {
   if (["approve", "approved", "pass", "accept", "yes", "true"].some((k) => normalized.includes(k))) {
     return "outcome-positive";
   }
-  if (["deny", "denied", "reject", "rejected", "fail", "failed", "no", "false"].some((k) => normalized.includes(k))) {
+  if (["deny", "denied", "decline", "reject", "rejected", "fail", "failed", "no", "false", "error"].some((k) => normalized.includes(k))) {
     return "outcome-negative";
+  }
+  if (["refer", "incomplete"].some((k) => normalized.includes(k))) {
+    return "outcome-neutral";
   }
   return "outcome-neutral";
 }
@@ -57,8 +60,8 @@ export function isCurrentVersion(
   return !!row?.is_current_version;
 }
 
-/** Flow max_cost cap label — undefined means no cap configured. */
-export function formatFlowCostCap(maxCost?: number): string {
+/** Checkpoint max_cost cap label — undefined means no cap configured. */
+export function formatCheckpointCostCap(maxCost?: number): string {
   if (maxCost == null) return "No cap";
   return `Cap ${maxCost.toFixed(2)}`;
 }
@@ -72,4 +75,33 @@ export function formatSignalRuntimeCost(cost?: number): string {
 export function formatEvalTimeout(seconds?: number): string {
   if (seconds == null) return "";
   return `${seconds}s eval limit`;
+}
+
+export function promotionActionLabel(action?: string): string {
+  const labels: Record<string, string> = {
+    promote: "Promote",
+    deactivate: "Deactivate",
+    reactivate: "Reactivate",
+  };
+  if (!action) return "Promote";
+  return labels[action] || action;
+}
+
+export function promotionActionBadgeVariant(action?: string): string {
+  if (action === "deactivate") return "inactive";
+  return "current";
+}
+
+export function canPromoteVersion(item: {
+  is_current_version?: boolean;
+  name_has_current_version?: boolean;
+}): boolean {
+  return !item.is_current_version && !!item.name_has_current_version;
+}
+
+export function canReactivateVersion(item: {
+  is_current_version?: boolean;
+  name_has_current_version?: boolean;
+}): boolean {
+  return !item.is_current_version && item.name_has_current_version === false;
 }

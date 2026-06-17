@@ -28,7 +28,27 @@ Expose port `8000` through your reverse proxy or security group. Do **not** publ
 | `DECISION_ENGINE_AUTH_TOKENS` | JSON map of bearer token → `{ tenant_id, actor_id, roles }` |
 | `DECISION_ENGINE_AUTH_TOKENS_FILE` | Path to the same JSON structure |
 
-The app fails startup if neither is set.
+Set at least one static-token source **or** configure JWT-only auth below. The app fails startup if neither static tokens nor `DECISION_ENGINE_JWT_HS256_SECRET` is set.
+
+For production identity integration, the API also accepts HS256 JWTs when configured:
+
+| Variable | Purpose |
+|----------|---------|
+| `DECISION_ENGINE_JWT_HS256_SECRET` | Validates `Authorization: Bearer <jwt>` when the token is not in the static map |
+| `DECISION_ENGINE_JWT_ISSUER` | Optional issuer (`iss`) check |
+| `DECISION_ENGINE_JWT_AUDIENCE` | Optional audience (`aud`) check |
+
+JWT claims: `sub` (actor id), `roles` (array or string), optional `tenant_id` for runtime-scoped tokens. Map identity-provider groups to `roles` at your gateway or token minting service.
+
+Role permissions are defined in `engine/permissions.py`. Built-in roles include full `admin`, `runtime`, and least-privilege operator roles such as `audit_viewer`, `config_operator`, `test_runner`, `tenant_admin`, and `admin_readonly`. Map identity-provider groups to these roles at your gateway or token minting service.
+
+### Connector secret encryption (required for connector auth)
+
+| Variable | Purpose |
+|----------|---------|
+| `DECISION_ENGINE_SECRET_ENCRYPTION_KEY` | Fernet key used to encrypt `signals.bearer_token` at rest (`enc:v1:` prefix). Required when persisting outbound connector bearer tokens; writes fail closed if unset. |
+
+`scripts/create_demo_env.sh` generates a local key. Admin API responses never return bearer token values (`has_bearer_token` only). Legacy plaintext rows remain readable until rotated.
 
 ### Database (required)
 
@@ -74,13 +94,36 @@ First boot of the Postgres container runs, in order:
 1. `sql/01_schema.sql`
 2. `sql/02_sample_data.sql`
 
-To reset completely:
+Those files do not rerun on an existing Postgres volume. **Schema upgrades** on existing volumes are applied by the app at startup from ordered files in `sql/migrations/` (recorded in `schema_migrations`). See `sql/migrations/README.md`.
+
+To recreate the curated demo data from scratch, reset the volume:
 
 ```sh
-bash scripts/destroy.sh
-bash scripts/run.sh
+bash scripts/create_demo_env.sh
+docker compose down -v
+docker compose up -d --build
 bash scripts/smoke_test.sh
 ```
+
+For local redeploys, `scripts/run.sh` reapplies schema and seed SQL with `ON_ERROR_STOP=1`; SQL errors stop the deploy. Check seed reapply safety with:
+
+```sh
+bash scripts/test_seed_idempotency.sh
+```
+
+Visual regression fixtures are not part of normal database initialization. Seed them only when running browser/visual tests:
+
+```sh
+bash scripts/seed_visual_fixture.sh
+```
+
+For a running development database, `scripts/cleanup_demo_config_via_api.py` can remove scratch/test tenants through admin APIs. Verify purge configuration with:
+
+```sh
+bash scripts/test_cleanup_integration.sh
+```
+
+Use a volume reset when you want seeded tenants and demo policy restored cleanly.
 
 ## Admin UI at runtime
 

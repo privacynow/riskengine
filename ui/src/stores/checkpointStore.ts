@@ -37,9 +37,11 @@ export const useCheckpointStore = defineStore("checkpoint", {
     signalCandidateTotalPages: {} as Record<string, number>,
     expandedCandidate: {} as Record<string, Record<string, boolean>>,
     selectedId: null as string | null,
-    detailTab: "summary" as "summary" | "dsl" | "signals" | "runtime" | "config",
+    detailTab: "summary" as "summary" | "config" | "versions" | "signals" | "dsl" | "runtime",
     detailDraft: emptyCheckpointDraft(),
     detailCheckpoint: null as Checkpoint | null,
+    versionHistory: [] as Checkpoint[],
+    versionHistoryLoading: false,
   }),
   getters: {
     selectedCheckpoint(state): Checkpoint | undefined {
@@ -81,10 +83,24 @@ export const useCheckpointStore = defineStore("checkpoint", {
       if (fromList) {
         this.detailCheckpoint = fromList;
         this.detailDraft = checkpointToDraft(fromList);
-        void this.loadDetailAssociations(id);
+        await this.loadDetailAssociations(id);
+        void this.loadVersionHistory(id);
         return;
       }
       await this.loadCheckpointDetail(id);
+    },
+
+    async loadVersionHistory(checkpointId: string) {
+      this.versionHistoryLoading = true;
+      try {
+        const data = await checkpointsApi.listVersions(checkpointId);
+        this.versionHistory = data.items;
+      } catch (err) {
+        useAuthStore().handleApiError(err);
+        this.versionHistory = [];
+      } finally {
+        this.versionHistoryLoading = false;
+      }
     },
 
     async loadCheckpointDetail(id: string) {
@@ -95,7 +111,8 @@ export const useCheckpointStore = defineStore("checkpoint", {
         if (!this.items.some((c) => c.id === id)) {
           this.items = [cp, ...this.items];
         }
-        void this.loadDetailAssociations(id);
+        await this.loadDetailAssociations(id);
+        void this.loadVersionHistory(id);
       } catch (err) {
         this.detailCheckpoint = null;
         useAuthStore().handleApiError(err);
@@ -284,7 +301,7 @@ export const useCheckpointStore = defineStore("checkpoint", {
         const newId = String((created as { id: string }).id);
         await this.loadAll(this.page);
         await this.selectCheckpoint(newId);
-        useUiStore().notify("Flow version saved.");
+        useUiStore().notify("Checkpoint version saved.");
         return newId;
       } catch (err) {
         useAuthStore().handleApiError(err);
@@ -349,11 +366,11 @@ export const useCheckpointStore = defineStore("checkpoint", {
     },
 
     async setCurrentVersion(checkpointId: string) {
-      const cp = this.items.find((c) => c.id === checkpointId);
-      if (!cp) return;
+      const cp = this.selectedCheckpoint ?? this.items.find((c) => c.id === checkpointId);
+      if (!cp || cp.id !== checkpointId) return;
       const { promote } = usePromoteDialog();
       const reason = await promote({
-        title: "Promote flow version",
+        title: "Promote checkpoint version",
         message: `Promote "${cp.name}" to the live current version for this tenant.`,
         confirmLabel: "Promote",
       });
@@ -363,7 +380,69 @@ export const useCheckpointStore = defineStore("checkpoint", {
           promotionReason: reason,
         });
         await this.loadAll(this.page);
+        if (this.selectedId === checkpointId) {
+          await this.selectCheckpoint(checkpointId);
+        } else {
+          void this.loadVersionHistory(checkpointId);
+        }
         useUiStore().notify("Current checkpoint version updated.");
+      } catch (err) {
+        useAuthStore().handleApiError(err);
+      }
+    },
+
+    async deactivateVersion(checkpointId: string) {
+      const cp = this.selectedCheckpoint ?? this.items.find((c) => c.id === checkpointId);
+      if (!cp || cp.id !== checkpointId || !cp.is_current_version) return;
+      const { promote } = usePromoteDialog();
+      const reason = await promote({
+        title: "Deactivate checkpoint",
+        message: `Remove "${cp.name}" from live runtime. Decisions by name will fail until another version is promoted or reactivated.`,
+        confirmLabel: "Deactivate",
+        reasonPlaceholder: "Why is this checkpoint being deactivated?",
+      });
+      if (!reason) return;
+      try {
+        await checkpointsApi.deactivate(checkpointId, { promotionReason: reason });
+        await this.loadAll(this.page);
+        if (this.selectedId === checkpointId) {
+          await this.selectCheckpoint(checkpointId);
+        } else {
+          void this.loadVersionHistory(checkpointId);
+        }
+        useUiStore().notify("Checkpoint deactivated.");
+      } catch (err) {
+        useAuthStore().handleApiError(err);
+      }
+    },
+
+    async reactivateVersion(checkpointId: string) {
+      const cp = this.selectedCheckpoint ?? this.items.find((c) => c.id === checkpointId);
+      if (
+        !cp ||
+        cp.id !== checkpointId ||
+        cp.is_current_version ||
+        cp.name_has_current_version !== false
+      ) {
+        return;
+      }
+      const { promote } = usePromoteDialog();
+      const reason = await promote({
+        title: "Reactivate checkpoint",
+        message: `Restore "${cp.name}" as the live current version for this tenant.`,
+        confirmLabel: "Reactivate",
+        reasonPlaceholder: "Why is this checkpoint being reactivated?",
+      });
+      if (!reason) return;
+      try {
+        await checkpointsApi.reactivate(checkpointId, { promotionReason: reason });
+        await this.loadAll(this.page);
+        if (this.selectedId === checkpointId) {
+          await this.selectCheckpoint(checkpointId);
+        } else {
+          void this.loadVersionHistory(checkpointId);
+        }
+        useUiStore().notify("Checkpoint reactivated.");
       } catch (err) {
         useAuthStore().handleApiError(err);
       }

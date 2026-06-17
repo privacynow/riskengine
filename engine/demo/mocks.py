@@ -4,7 +4,7 @@ MOCK_ENDPOINT_RESPONSES: Dict[str, Dict[str, Any]] = {
     "doc-verify": {"value": True},
     "sanction-screen": {"value": True},
     "kyc_score": {"value": 85},
-    "credit_score": {"value": 75},
+    "credit_score": {"value": 742},
     "onboarding": {"value": True},
     "compliance": {"value": True},
     "underwriting": {"value": True},

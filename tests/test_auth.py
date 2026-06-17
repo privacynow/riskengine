@@ -41,7 +41,7 @@ class TestAuthIntegration:
             },
         )
         assert resp.status_code == 200
-        assert resp.json()["final_decision_value"] == "True"
+        assert resp.json()["decision_outcome"] == "APPROVE"
 
     def test_supplied_tenant_in_body_rejected(self, client):
         resp = client.post(
@@ -73,8 +73,8 @@ class TestAuthIntegration:
             headers=auth_header(TEST_OTHER_TOKEN),
             json={"checkpoint_name": "Onboarding", "correlation_id": "y"},
         ).json()
-        assert sample["final_decision_value"] == "True"
-        assert other["final_decision_value"] == "False"
+        assert sample["decision_outcome"] == "APPROVE"
+        assert other["decision_outcome"] == "DECLINE"
 
     def test_inactive_signal_not_executed(self, client):
         resp = client.post(
@@ -101,7 +101,7 @@ class TestAuthIntegration:
             },
         )
         assert resp.status_code == 200
-        assert resp.json()["final_decision_value"] == "True"
+        assert resp.json()["decision_outcome"] == "APPROVE"
 
     def test_runtime_checkpoint_response_omits_signal_bearer_token(self, client):
         resp = client.get(

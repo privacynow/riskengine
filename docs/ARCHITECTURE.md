@@ -24,21 +24,25 @@ All checkpoint DSL and signal expression evaluation uses `engine/services/dsl.py
 
 SimpleEval is the language authority. See [DSL_GUIDE.md](DSL_GUIDE.md).
 
+Admin DSL preflight uses the same contract. Existing checkpoint preflight may pass `checkpoint_id`; the server checks tenant access and resolves linked signal names from `checkpoint_signals`. New checkpoint drafts pass selected signal names from the client because no checkpoint row exists yet.
+
 ## Decision evaluation
 
-`POST /decisions` (and admin `POST /ui/test_decisions`):
+`POST /decisions` (and admin `POST /ui/test_decisions`) use the **execution planner** (`engine/services/execution_planner.py`). See [EXECUTION_PLANNER.md](EXECUTION_PLANNER.md).
 
 1. Loads the checkpoint (current or explicit draft ID in Test Lab)
-2. Inserts `decision_log` as `PENDING`
-3. Runs linked signals grouped by `order_of_evaluation`
+2. Builds a dependency graph from checkpoint DSL and expression signals
+3. Runs only signals in the computed execution set, ordered by stage / criticality / priority
+4. Applies checkpoint and tenant-period budgets; cache hits incur zero actual cost
+5. Resolves `decision_outcome` (`APPROVE`, `DECLINE`, `REFER`, `INCOMPLETE`, `ERROR`) with per-signal execution status in the API response
+6. Persists audit rows in one short write transaction after execution completes
 
-### Signal scheduling
+### Signal scheduling (legacy notes)
 
-Within each order group:
+Within each stage group:
 
 - Signals with `can_run_in_parallel=true` may run concurrently
 - Other signals run serially
-- `override_cost_flag` controls **cost gating only** (allow over-budget execution), not parallelism
 
 ### Timeouts
 
@@ -53,7 +57,11 @@ Within each order group:
 Expression signals receive prior signal results plus request `parameters` whose names appear as DSL identifiers in `expression_body` (and template placeholders for HTTP/function signals).
 
 4. Evaluates checkpoint `dsl_expression`
-5. Updates `decision_log` (never left `PENDING` after orchestration completes)
+5. Persists `decision_log`, signal audit rows, and cache writes in one short write transaction after execution completes. Signal HTTP calls run with no write transaction held; cache reads use independent short read connections.
+
+### Signal caching
+
+Signals with `allow_caching=true` read `signal_cached_values` via short read connections. New cache writes are staged in memory and persisted in the final write transaction. The in-memory cache updates only after commit succeeds.
 
 ## Configuration writes
 
@@ -70,7 +78,7 @@ Path and write-model IDs are validated as UUIDs. Invalid IDs return **422** befo
 
 ## Connector secrets
 
-Outbound HTTP auth belongs in `signals.bearer_token` only. API reads redact templates and param values. Copied tenants get `NULL` bearer tokens.
+Outbound HTTP auth belongs in `signals.bearer_token` only. Values are encrypted at rest (`enc:v1:`) when `DECISION_ENGINE_SECRET_ENCRYPTION_KEY` is configured; admin writes with a bearer token fail if the key is missing. API reads redact templates and param values. Copied tenants get `NULL` bearer tokens.
 
 ## Outbound URL policy
 
@@ -82,4 +90,11 @@ Source: `ui/src/`. Served at `/admin/`. Active tenant in `?tenant=<uuid>`. Front
 
 ## Test fixtures
 
-Visual regression data lives in `tests/fixtures/visual_fixture.sql` and is applied with `scripts/seed_visual_fixture.sh` — not during application startup.
+Playwright and integration tests use SQL fixtures applied on demand — not during application startup:
+
+| Fixture | File | Purpose |
+|---------|------|---------|
+| Visual regression | `tests/fixtures/visual_fixture.sql` | Stable `VISUAL FIXTURE BANK` tenant for screenshot tests |
+| Lifecycle e2e | `tests/fixtures/lifecycle_e2e_fixture.sql` | Scratch `Lifecycle E2E Checkpoint` for deactivate/reactivate tests |
+
+Both are applied by `scripts/seed_visual_fixture.sh` (CI runs this before Playwright). See [ui/README.md](../ui/README.md) for how specs consume them.

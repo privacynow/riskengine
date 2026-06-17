@@ -34,6 +34,15 @@
   border-bottom: 1px solid var(--color-border-subtle);
 }
 
+.workbench-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
 .workbench-detail-header h2,
 .workbench-detail-header h3,
 .workbench-detail-header h4 {
@@ -480,6 +489,65 @@
 .rule-authoring-diff {
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+.version-history {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  gap: var(--space-4);
+}
+
+.version-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.version-history-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  text-align: left;
+}
+
+.version-history-row.selected {
+  border-color: var(--accent);
+}
+
+.version-history-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.version-history-detail-header {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  align-items: flex-start;
+  margin-bottom: var(--space-3);
+}
+
+.version-history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.version-diff-line--removed {
+  display: block;
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+}
+
+.version-diff-line--added {
+  display: block;
+  background: color-mix(in srgb, var(--success) 18%, transparent);
 }
 
 @media (max-width: 768px) {

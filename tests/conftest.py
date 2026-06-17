@@ -2,6 +2,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 
@@ -16,6 +17,11 @@ VISUAL_FIXTURE_TENANT = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 TEST_SAMPLE_TOKEN = "test-sample-runtime-token"
 TEST_OTHER_TOKEN = "test-other-runtime-token"
 TEST_ADMIN_TOKEN = "test-admin-token"
+TEST_AUDIT_VIEWER_TOKEN = "test-audit-viewer-token"
+TEST_CONFIG_OPERATOR_TOKEN = "test-config-operator-token"
+TEST_TEST_RUNNER_TOKEN = "test-test-runner-token"
+TEST_TENANT_ADMIN_TOKEN = "test-tenant-admin-token"
+TEST_ADMIN_READONLY_TOKEN = "test-admin-readonly-token"
 
 os.environ.pop("DECISION_ENGINE_AUTH_TOKENS_FILE", None)
 os.environ.setdefault("DB_PASSWORD", "postgres")
@@ -36,6 +42,31 @@ os.environ["DECISION_ENGINE_AUTH_TOKENS"] = json.dumps(
             "actor_id": "test-admin",
             "roles": ["admin"],
         },
+        TEST_AUDIT_VIEWER_TOKEN: {
+            "tenant_id": None,
+            "actor_id": "test-audit-viewer",
+            "roles": ["audit_viewer"],
+        },
+        TEST_CONFIG_OPERATOR_TOKEN: {
+            "tenant_id": None,
+            "actor_id": "test-config-operator",
+            "roles": ["config_operator"],
+        },
+        TEST_TEST_RUNNER_TOKEN: {
+            "tenant_id": None,
+            "actor_id": "test-test-runner",
+            "roles": ["test_runner"],
+        },
+        TEST_TENANT_ADMIN_TOKEN: {
+            "tenant_id": SAMPLE_TENANT,
+            "actor_id": "test-tenant-admin",
+            "roles": ["tenant_admin"],
+        },
+        TEST_ADMIN_READONLY_TOKEN: {
+            "tenant_id": None,
+            "actor_id": "test-admin-readonly",
+            "roles": ["admin_readonly"],
+        },
     }
 )
 
@@ -50,6 +81,66 @@ def _integration_tests_enabled() -> bool:
     return bool(os.environ.get("RUN_INTEGRATION_TESTS")) or os.environ.get(
         "DB_HOST", "localhost"
     ) != "localhost"
+
+
+def _install_signal_http_mock() -> None:
+    import engine.services.signals as signals_mod
+    from engine.demo.mocks import MOCK_ENDPOINT_RESPONSES
+
+    class _MockResponse:
+        def __init__(self, payload: dict):
+            self._payload = payload
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self):
+            return self._payload
+
+    def _payload_for_url(url: str) -> dict:
+        path = urlparse(url).path
+        if "/mock/" in path:
+            mock_name = path.split("/mock/", 1)[-1].strip("/").split("/")[0]
+            return MOCK_ENDPOINT_RESPONSES.get(mock_name, {"value": True})
+        return {"value": True}
+
+    class _MockAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def get(self, url, **kwargs):
+            return _MockResponse(_payload_for_url(url))
+
+        async def post(self, url, **kwargs):
+            return _MockResponse(_payload_for_url(url))
+
+        async def put(self, url, **kwargs):
+            return _MockResponse(_payload_for_url(url))
+
+        async def patch(self, url, **kwargs):
+            return _MockResponse(_payload_for_url(url))
+
+        async def delete(self, url, **kwargs):
+            return _MockResponse(_payload_for_url(url))
+
+    signals_mod.httpx.AsyncClient = _MockAsyncClient
+
+
+if _integration_tests_enabled():
+    _install_signal_http_mock()
+
+
+@pytest.fixture(autouse=True)
+def _ensure_signal_http_mock():
+    if _integration_tests_enabled():
+        _install_signal_http_mock()
+    yield
 
 
 @pytest.fixture(autouse=True)

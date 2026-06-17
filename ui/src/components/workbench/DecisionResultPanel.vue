@@ -6,22 +6,24 @@
         class="audit-outcome-hero test-result-hero"
         :class="outcomeHeroClass"
       >
-        <StatusBadge :variant="outcomeVariant" :text="finalValue" />
+        <StatusBadge :variant="outcomeVariant" :text="outcomeLabel" />
         <div class="audit-outcome-hero-body">
           <h4>{{ variant === 'harness' ? 'Test run result' : 'Decision outcome' }}</h4>
           <p class="field-hint">{{ outcomeHint }}</p>
         </div>
         <div class="audit-outcome-hero-metric">
-          <span class="result-metric-label">Cost</span>
+          <span class="result-metric-label">Actual cost</span>
           <span class="result-metric-value">{{ cost }}</span>
         </div>
       </div>
 
       <dl v-if="decisionId" class="detail-list detail-list--compact">
         <div><dt>Decision ID</dt><dd class="text-mono">{{ decisionId }}</dd></div>
+        <div v-if="decisionReason"><dt>Reason</dt><dd>{{ decisionReason }}</dd></div>
+        <div v-if="degraded"><dt>Degraded</dt><dd>Non-required signals missing or failed</dd></div>
       </dl>
 
-      <FormSection v-if="traceSteps.length" title="Signal trace">
+      <FormSection v-if="traceSteps.length" title="Execution plan">
         <TraceTimeline :steps="traceSteps" />
       </FormSection>
 
@@ -56,25 +58,30 @@ const error = computed(() => {
 const normalized = computed((): DecisionTestResponse | null => {
   const r = props.result;
   if (!r || error.value) return null;
-  if ("final_decision_value" in r && "signal_results" in r) {
+  if ("decision_outcome" in r && "signal_results" in r) {
     return r as DecisionTestResponse;
   }
   return null;
 });
 
-const finalValue = computed(() => normalized.value?.final_decision_value ?? "—");
-const cost = computed(() => normalized.value?.cost_incurred ?? "—");
+const outcomeLabel = computed(() => {
+  const outcome = normalized.value?.decision_outcome ?? "—";
+  if (normalized.value?.degraded && outcome === "APPROVE") {
+    return "APPROVE (degraded)";
+  }
+  return outcome;
+});
+const cost = computed(() => normalized.value?.cost?.actual_units ?? "—");
 const decisionId = computed(() => normalized.value?.decision_id ?? "");
-const outcomeVariant = computed(() => decisionOutcomeVariant(normalized.value?.final_decision_value));
+const decisionReason = computed(() => normalized.value?.decision_reason ?? "");
+const degraded = computed(() => normalized.value?.degraded ?? false);
+const outcomeVariant = computed(() => decisionOutcomeVariant(normalized.value?.decision_outcome));
 
 const outcomeHeroClass = computed(() => {
-  const value = String(finalValue.value).toLowerCase();
-  if (value === "false" || value === "fail" || value === "failed") {
-    return "audit-outcome-hero--fail";
-  }
-  if (value === "true" || value === "pass" || value === "approved") {
-    return "audit-outcome-hero--ok";
-  }
+  const value = String(normalized.value?.decision_outcome ?? "").toUpperCase();
+  if (value === "DECLINE" || value === "ERROR") return "audit-outcome-hero--fail";
+  if (value === "APPROVE") return "audit-outcome-hero--ok";
+  if (value === "REFER" || value === "INCOMPLETE") return "audit-outcome-hero--neutral";
   return "audit-outcome-hero--neutral";
 });
 
@@ -82,10 +89,25 @@ const outcomeHint = computed(() => {
   if (props.variant === "harness") {
     return "Server-side test execution — not promoted to production traffic.";
   }
-  return "Final evaluated decision value for this run.";
+  return normalized.value?.decision_reason || "Structured decision outcome for this run.";
 });
 
 const traceSteps = computed((): TraceStep[] => {
+  const signals = normalized.value?.signals;
+  if (signals?.length) {
+    return signals.map((sig) => ({
+      id: sig.name,
+      label: sig.name,
+      detail: sig.skip_reason || sig.status,
+      value: sig.value,
+      status:
+        sig.status === "ran"
+          ? "ok"
+          : sig.status.startsWith("skipped") || sig.status === "not_applicable"
+            ? "neutral"
+            : "fail",
+    }));
+  }
   const results = normalized.value?.signal_results;
   if (!results) return [];
   return Object.entries(results).map(([name, value]) => ({

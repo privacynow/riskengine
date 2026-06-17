@@ -74,6 +74,14 @@ The lighter UI smoke wrapper is:
 bash scripts/ui_smoke.sh
 ```
 
+CI separates browser coverage:
+
+- `bash scripts/run_playwright_blocking_ci.sh` — behavioral specs that block merge
+- `bash scripts/run_playwright_visual_ci.sh` — visual snapshots for artifact review
+- `bash scripts/run_playwright_ci.sh` — full local Playwright suite
+
+The full local Playwright suite includes `test-lab-preflight.spec.ts`, which verifies that seeded checkpoint DSL preflight resolves linked signal names server-side in Test Lab.
+
 ## Local Python Process
 
 Docker is the normal path. To run the Python app directly:
@@ -101,10 +109,43 @@ The Vite dev server proxies `/ui` and `/decisions` to `http://localhost:8000`, s
 
 ## Resetting State
 
+Use this when you want a clean local environment with the curated demo data from `sql/02_sample_data.sql`:
+
 ```sh
-docker compose down -v
 bash scripts/create_demo_env.sh
+docker compose down -v
 docker compose up -d --build
+bash scripts/smoke_test.sh
 ```
 
 `create_demo_env.sh` preserves an existing database password but rotates auth tokens. Use the newly printed admin token after rerunning it.
+
+For a one-command local rebuild:
+
+```sh
+bash scripts/redeploy_all.sh
+```
+
+`scripts/run.sh` applies schema and seed SQL with `ON_ERROR_STOP=1`, so SQL errors fail the deploy instead of becoming noisy logs. Seed data is intended to re-apply cleanly against an existing volume. Verify that explicitly with:
+
+```sh
+bash scripts/test_seed_idempotency.sh
+docker compose exec -T -e RUN_INTEGRATION_TESTS=1 risk-engine pytest -q tests/test_seed_idempotency.py tests/test_seed_execution.py
+```
+
+Postgres entrypoint init SQL runs only when the database volume is first created. `scripts/run.sh` re-applies the SQL manually for local development, but a volume reset is still the cleanest way to restore deleted seeded tenants.
+
+For visual regression tests, seed the deterministic visual tenant after the stack is running:
+
+```sh
+bash scripts/seed_visual_fixture.sh
+```
+
+If you only need to remove scratch/test tenants and keep the existing volume, use the API cleanup script:
+
+```sh
+python3 scripts/cleanup_demo_config_via_api.py --dry-run
+python3 scripts/cleanup_demo_config_via_api.py --yes
+```
+
+Use `--include-seed-tenants --yes` only when you intend to remove `SAMPLE LENDING`, `OTHER BANK`, or `VISUAL FIXTURE BANK`; a full volume reset is the preferred way to recreate them cleanly.

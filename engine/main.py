@@ -1,4 +1,4 @@
-import asyncio
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -8,14 +8,15 @@ from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from .audit import log_processor, log_queue
+from .audit import drain_pending_outbox
 from .auth import initialize_auth
 from .config import APP_TITLE, logger, validate_config
 from .migrations import ensure_schema
 from .demo.mocks import mock_service_response
 from .services.security import is_local_mock_client
 from .models import TenantSuppliedError
-from .routes import admin, runtime
+from .services.dev_purge import dev_purge_enabled
+from .routes import admin, dev_purge, runtime
 
 OPENAPI_SECURITY_SCHEME = {
     "type": "http",
@@ -33,12 +34,9 @@ async def lifespan(app: FastAPI):
     validate_config()
     initialize_auth()
     ensure_schema()
-    task = asyncio.create_task(log_processor())
+    drain_pending_outbox()
     logger.info("%s started.", APP_TITLE)
     yield
-    await log_queue.put(None)
-    await log_queue.join()
-    task.cancel()
     logger.info("%s shutdown.", APP_TITLE)
 
 
@@ -130,6 +128,8 @@ async def mock_service(mock_name: str, request: Request):
 
 app.include_router(runtime.router)
 app.include_router(admin.router)
+if dev_purge_enabled():
+    app.include_router(dev_purge.router)
 
 UI_DIST = Path(__file__).resolve().parent.parent / "ui" / "dist"
 if not UI_DIST.is_dir():

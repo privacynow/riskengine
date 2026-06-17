@@ -14,7 +14,7 @@
       <footer class="sidebar-footer">
         <p class="sidebar-footer-text">
           Operations console
-          <span class="sidebar-footer-sub">Multi-tenant decision flows</span>
+          <span class="sidebar-footer-sub">Multi-tenant checkpoints</span>
         </p>
       </footer>
     </aside>

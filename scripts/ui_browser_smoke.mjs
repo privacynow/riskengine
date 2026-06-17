@@ -2,6 +2,9 @@
 /**
  * Browser smoke for Decision Engine admin UI (Vue 3 + Vite build).
  * Env: BASE_URL, SMOKE_ADMIN_TOKEN
+ *
+ * Prefer stable routes/view classes over exact button copy. Nav labels are asserted
+ * separately so terminology updates fail in one obvious place, not mid-navigation.
  */
 
 import { chromium } from "playwright";
@@ -9,6 +12,12 @@ import { chromium } from "playwright";
 const BASE_URL = process.env.BASE_URL || "http://localhost:8000";
 const ADMIN_TOKEN = process.env.SMOKE_ADMIN_TOKEN || "";
 const AUTH_KEY = "decisionEngineAdminToken";
+
+/** Keep in sync with ui/src/components/layout/SidebarNav.vue design section labels. */
+const NAV_LABELS = {
+  checkpoints: "Checkpoints",
+  signals: "Signal Library",
+};
 
 const ALLOWED_CONSOLE_PATTERNS = [
   /favicon/i,
@@ -48,6 +57,24 @@ async function assertNoHorizontalOverflow(page) {
       `horizontal overflow at 390px: scrollWidth=${metrics.scrollWidth} clientWidth=${metrics.clientWidth}`
     );
   }
+}
+
+async function navigateSidebarRoute(page, routeSegment) {
+  const link = page.locator(`.sidebar-nav a[href*="/admin/${routeSegment}"]`).first();
+  await link.click();
+  return link;
+}
+
+async function assertNavLabel(link, expectedLabel) {
+  const label = (await link.locator(".nav-label").textContent())?.trim() ?? "";
+  if (label !== expectedLabel) {
+    fail(`nav label for ${expectedLabel} expected "${expectedLabel}", got "${label}"`);
+  }
+}
+
+async function openWorkbenchCreateForm(page, viewClass, formClass) {
+  await page.locator(`.${viewClass} .btn-primary`).click();
+  await page.waitForSelector(`.${formClass}`, { timeout: 10000 });
 }
 
 async function main() {
@@ -99,10 +126,10 @@ async function main() {
     }
 
     console.log("-> Navigate to Signal Library and open create form");
-    await page.getByRole("link", { name: "Signal Library", exact: true }).click();
+    const signalsLink = await navigateSidebarRoute(page, "signals");
+    await assertNavLabel(signalsLink, NAV_LABELS.signals);
     await page.waitForSelector(".signals-view", { timeout: 10000 });
-    await page.getByRole("button", { name: "New signal" }).click();
-    await page.waitForSelector(".signal-form", { timeout: 10000 });
+    await openWorkbenchCreateForm(page, "signals-view", "signal-form");
 
     const signalLabels = await page.locator(".signal-form label").allTextContents();
     for (const label of ["Name", "Description", "Type", "Cost"]) {
@@ -111,11 +138,11 @@ async function main() {
       }
     }
 
-    console.log("-> Navigate to Decision Flows and open create form");
-    await page.getByRole("link", { name: "Decision Flows", exact: true }).click();
+    console.log("-> Navigate to Checkpoints and open create form");
+    const checkpointsLink = await navigateSidebarRoute(page, "checkpoints");
+    await assertNavLabel(checkpointsLink, NAV_LABELS.checkpoints);
     await page.waitForSelector(".checkpoints-view", { timeout: 10000 });
-    await page.getByRole("button", { name: "New flow" }).click();
-    await page.waitForSelector(".checkpoint-form", { timeout: 10000 });
+    await openWorkbenchCreateForm(page, "checkpoints-view", "checkpoint-form");
 
     const checkpointLabels = await page.locator(".checkpoint-form label").allTextContents();
     for (const label of ["Name", "DSL expression"]) {

@@ -21,8 +21,11 @@ CREATE TABLE IF NOT EXISTS checkpoints (
     type VARCHAR(100) NOT NULL,
     dsl_expression TEXT NOT NULL,
     method_of_call TEXT,
-    max_cost INTEGER NOT NULL DEFAULT 0,
+    max_cost INTEGER,
     override_cost_flag BOOLEAN NOT NULL DEFAULT FALSE,
+    budget_exceeded_policy VARCHAR(20) NOT NULL DEFAULT 'refer',
+    vendor_failure_policy VARCHAR(20) NOT NULL DEFAULT 'refer',
+    terminal_decline_signal_names TEXT[] NOT NULL DEFAULT '{}',
     timeout_seconds INTEGER NOT NULL DEFAULT 30,
     created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW()
@@ -46,11 +49,18 @@ CREATE TABLE IF NOT EXISTS signals (
     request_url_params_template TEXT,
     request_body_template TEXT,
     request_headers_template TEXT,
-    -- Demo-only: outbound connector token stored plaintext; API reads return has_bearer_token only.
+    -- Outbound connector token; encrypted at rest (enc:v1:) when DECISION_ENGINE_SECRET_ENCRYPTION_KEY is set.
+    -- Admin API never returns the value (has_bearer_token only).
     bearer_token TEXT,
     allow_caching BOOLEAN NOT NULL DEFAULT FALSE,
     global_reuse BOOLEAN NOT NULL DEFAULT FALSE,
     function_params_template TEXT,
+    default_priority INTEGER NOT NULL DEFAULT 500,
+    billable_event VARCHAR(20) NOT NULL DEFAULT 'success',
+    cache_scope VARCHAR(40) NOT NULL DEFAULT 'tenant_applicant_signal',
+    vendor_name VARCHAR(255),
+    vendor_product VARCHAR(255),
+    is_expensive_vendor BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW()
 );
@@ -60,6 +70,24 @@ CREATE TABLE IF NOT EXISTS checkpoint_signals (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     checkpoint_id UUID NOT NULL REFERENCES checkpoints (id),
     signal_id UUID NOT NULL REFERENCES signals (id),
+    priority_override INTEGER,
+    criticality VARCHAR(20) NOT NULL DEFAULT 'preferred',
+    execution_role VARCHAR(40) NOT NULL DEFAULT 'referenced_policy',
+    stage_override INTEGER,
+    vendor_audit_after_decline BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+-- tenant period budgets
+CREATE TABLE IF NOT EXISTS tenant_budgets (
+    tenant_id UUID PRIMARY KEY REFERENCES tenants (id),
+    window_days INTEGER NOT NULL DEFAULT 30,
+    window_mode VARCHAR(20) NOT NULL DEFAULT 'anchored',
+    limit_units INTEGER NOT NULL DEFAULT 100000,
+    used_units INTEGER NOT NULL DEFAULT 0,
+    reserved_units INTEGER NOT NULL DEFAULT 0,
+    window_anchor TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
     created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW()
 );
@@ -70,8 +98,15 @@ CREATE TABLE IF NOT EXISTS decision_log (
     checkpoint_id UUID NOT NULL REFERENCES checkpoints (id),
     tenant_id UUID NOT NULL REFERENCES tenants (id),
     applicant_id VARCHAR(255),
-    final_decision_value VARCHAR(255) NOT NULL,
+    final_decision_value VARCHAR(255),
+    decision_outcome VARCHAR(32) NOT NULL,
+    decision_reason VARCHAR(64),
+    degraded BOOLEAN NOT NULL DEFAULT FALSE,
     cost_incurred INTEGER NOT NULL DEFAULT 0,
+    estimated_cost_units INTEGER NOT NULL DEFAULT 0,
+    reserved_cost_units INTEGER NOT NULL DEFAULT 0,
+    actual_cost_units INTEGER NOT NULL DEFAULT 0,
+    budget_units INTEGER,
     correlation_id VARCHAR(255),
     decision_timestamp TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
     created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
@@ -89,6 +124,14 @@ CREATE TABLE IF NOT EXISTS signal_log (
     completed_at TIMESTAMP WITHOUT TIME ZONE,
     cost_incurred INTEGER NOT NULL DEFAULT 0,
     success BOOLEAN NOT NULL DEFAULT FALSE,
+    error_message TEXT,
+    execution_status VARCHAR(32),
+    criticality VARCHAR(20),
+    estimated_cost_units INTEGER NOT NULL DEFAULT 0,
+    reserved_cost_units INTEGER NOT NULL DEFAULT 0,
+    actual_cost_units INTEGER NOT NULL DEFAULT 0,
+    cache_hit BOOLEAN NOT NULL DEFAULT FALSE,
+    skip_reason_code VARCHAR(64),
     created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW()
 );
@@ -107,7 +150,7 @@ CREATE TABLE IF NOT EXISTS signal_log_values (
 CREATE TABLE IF NOT EXISTS signal_cached_values (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID NOT NULL REFERENCES tenants (id),
-    checkpoint_id UUID NOT NULL REFERENCES checkpoints (id),
+    checkpoint_id UUID,
     signal_id UUID NOT NULL REFERENCES signals (id),
     applicant_id VARCHAR(255),
     signal_value TEXT,
@@ -116,16 +159,25 @@ CREATE TABLE IF NOT EXISTS signal_cached_values (
     updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW()
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS signal_cached_values_unique_idx
+CREATE UNIQUE INDEX IF NOT EXISTS signal_cached_values_checkpoint_scope_idx
   ON signal_cached_values (
     tenant_id,
     checkpoint_id,
     signal_id,
     COALESCE(applicant_id, ''::varchar)
-  );
+  )
+  WHERE checkpoint_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS signal_cached_values_tenant_signal_applicant_idx
+  ON signal_cached_values (
+    tenant_id,
+    signal_id,
+    COALESCE(applicant_id, ''::varchar)
+  )
+  WHERE checkpoint_id IS NULL;
 
 CREATE INDEX IF NOT EXISTS signal_cached_values_lookup_idx
-  ON signal_cached_values (tenant_id, checkpoint_id, signal_id, applicant_id);
+  ON signal_cached_values (tenant_id, signal_id, applicant_id);
 
 -- per-signal stored variable values
 CREATE TABLE IF NOT EXISTS signal_variable_values (

@@ -55,7 +55,7 @@ test("tenant switch reloads checkpoints list once", async ({ page }) => {
   const tenantId = await firstTenantId(page);
   await selectTenant(page, tenantId);
 
-  await navigateSidebar(page, "Decision Flows");
+  await navigateSidebar(page, "Checkpoints");
   await page.waitForSelector(".checkpoints-view", { timeout: 10000 });
 
   const firstResponse = page.waitForResponse(
@@ -109,7 +109,7 @@ test("sidebar navigation preserves tenant query", async ({ page }) => {
   await navigateSidebar(page, "Signal Library");
   await page.waitForURL(new RegExp(`tenant=${tenantId}`));
 
-  await navigateSidebar(page, "Decision Flows");
+  await navigateSidebar(page, "Checkpoints");
   await expect(page).toHaveURL(new RegExp(`tenant=${tenantId}`));
 });
 
@@ -119,7 +119,7 @@ test("mobile checkpoints list renders list rows", async ({ page }) => {
   const tenantId = await firstTenantId(page);
   await selectTenant(page, tenantId);
 
-  await navigateSidebar(page, "Decision Flows");
+  await navigateSidebar(page, "Checkpoints");
   await page.waitForSelector(".checkpoints-view", { timeout: 10000 });
   await page.getByRole("button", { name: "Load all" }).click();
   await page.waitForSelector(".checkpoints-view .list-row", { timeout: 10000 });

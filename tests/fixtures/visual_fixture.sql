@@ -13,8 +13,8 @@ INSERT INTO checkpoints (
 SELECT
   'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
   'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-  'Fixture Flow',
-  'Stable flow for visual regression.',
+  'Fixture Checkpoint',
+  'Stable checkpoint for visual regression.',
   'fixture',
   'fixture_signal',
   'http://127.0.0.1:8000/mock/fixture',
@@ -59,7 +59,7 @@ WHERE NOT EXISTS (
 INSERT INTO checkpoint_current_version (tenant_id, name, checkpoint_id)
 SELECT
   'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-  'Fixture Flow',
+  'Fixture Checkpoint',
   'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
 ON CONFLICT (tenant_id, name) DO UPDATE
    SET checkpoint_id = EXCLUDED.checkpoint_id,
@@ -83,7 +83,7 @@ VALUES (
   'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
   'checkpoint',
   'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
-  'Fixture Flow',
+  'Fixture Checkpoint',
   'fixture',
   'Seed promote',
   'promote',
@@ -100,3 +100,17 @@ ON CONFLICT (id) DO UPDATE
        action = EXCLUDED.action,
        source = EXCLUDED.source,
        created_at = EXCLUDED.created_at;
+
+UPDATE checkpoints
+   SET name = 'Fixture Checkpoint',
+       description = 'Stable checkpoint for visual regression.'
+ WHERE id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+
+UPDATE checkpoint_current_version
+   SET checkpoint_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+ WHERE tenant_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+   AND name = 'Fixture Checkpoint';
+
+UPDATE promotion_audit
+   SET resource_name = 'Fixture Checkpoint'
+ WHERE id = 'dddddddd-dddd-dddd-dddd-dddddddddddd';

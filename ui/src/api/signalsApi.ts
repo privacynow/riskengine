@@ -19,6 +19,9 @@ export const signalsApi = {
   search(params: SignalListParams & { q: string }) {
     return httpJson<Paginated<Signal>>(`/ui/search_signals${buildQuery(params)}`);
   },
+  listVersions(id: string) {
+    return httpJson<{ items: Signal[] }>(`/ui/signals/${id}/versions`);
+  },
   get(id: string) {
     return httpJson<Signal>(`/ui/signals/${id}`);
   },
@@ -31,6 +34,20 @@ export const signalsApi = {
   },
   makeCurrent(id: string, payload: { promotionReason: string }) {
     return httpJson<unknown>(`/ui/signals/${id}/make_current`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  },
+  deactivate(id: string, payload: { promotionReason: string }) {
+    return httpJson<unknown>(`/ui/signals/${id}/deactivate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  },
+  reactivate(id: string, payload: { promotionReason: string }) {
+    return httpJson<unknown>(`/ui/signals/${id}/reactivate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),

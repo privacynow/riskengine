@@ -45,10 +45,12 @@ export const useSignalStore = defineStore("signal", {
     checkpointCandidateTotalPages: {} as Record<string, number>,
     expandedCandidate: {} as Record<string, Record<string, boolean>>,
     selectedId: null as string | null,
-    detailTab: "summary" as "summary" | "config" | "associations" | "variables",
+    detailTab: "summary" as "summary" | "config" | "versions" | "associations" | "variables",
     detailDraft: emptySignalDraft(),
     detailAssociatedCheckpoints: [] as { id: string; name: string }[],
     detailSignal: null as Signal | null,
+    versionHistory: [] as Signal[],
+    versionHistoryLoading: false,
   }),
   getters: {
     selectedSignal(state): Signal | undefined {
@@ -88,9 +90,23 @@ export const useSignalStore = defineStore("signal", {
         this.detailSignal = fromList;
         this.detailDraft = signalToDraft(fromList);
         void this.loadAssociations(id);
+        void this.loadVersionHistory(id);
         return;
       }
       await this.loadSignalDetail(id);
+    },
+
+    async loadVersionHistory(signalId: string) {
+      this.versionHistoryLoading = true;
+      try {
+        const data = await signalsApi.listVersions(signalId);
+        this.versionHistory = data.items;
+      } catch (err) {
+        useAuthStore().handleApiError(err);
+        this.versionHistory = [];
+      } finally {
+        this.versionHistoryLoading = false;
+      }
     },
 
     async loadSignalDetail(id: string) {
@@ -102,6 +118,7 @@ export const useSignalStore = defineStore("signal", {
           this.items = [signal, ...this.items];
         }
         void this.loadAssociations(id);
+        void this.loadVersionHistory(id);
       } catch (err) {
         this.detailSignal = null;
         useAuthStore().handleApiError(err);
@@ -313,8 +330,8 @@ export const useSignalStore = defineStore("signal", {
     },
 
     async setCurrentVersion(signalId: string) {
-      const signal = this.items.find((s) => s.id === signalId);
-      if (!signal) return;
+      const signal = this.selectedSignal ?? this.items.find((s) => s.id === signalId);
+      if (!signal || signal.id !== signalId) return;
       const { promote } = usePromoteDialog();
       const reason = await promote({
         title: "Promote signal version",
@@ -327,8 +344,67 @@ export const useSignalStore = defineStore("signal", {
         await this.loadAll(this.page);
         if (this.selectedId === signalId) {
           await this.selectSignal(signalId);
+        } else {
+          void this.loadVersionHistory(signalId);
         }
         useUiStore().notify("Current signal version updated.");
+      } catch (err) {
+        useAuthStore().handleApiError(err);
+      }
+    },
+
+    async deactivateVersion(signalId: string) {
+      const signal = this.selectedSignal ?? this.items.find((s) => s.id === signalId);
+      if (!signal || signal.id !== signalId || !signal.is_current_version) return;
+      const { promote } = usePromoteDialog();
+      const reason = await promote({
+        title: "Deactivate signal",
+        message: `Remove "${signal.name}" from live runtime. Linked checkpoints will skip this signal until another version is promoted or reactivated.`,
+        confirmLabel: "Deactivate",
+        reasonPlaceholder: "Why is this signal being deactivated?",
+      });
+      if (!reason) return;
+      try {
+        await signalsApi.deactivate(signalId, { promotionReason: reason });
+        await this.loadAll(this.page);
+        if (this.selectedId === signalId) {
+          await this.selectSignal(signalId);
+        } else {
+          void this.loadVersionHistory(signalId);
+        }
+        useUiStore().notify("Signal deactivated.");
+      } catch (err) {
+        useAuthStore().handleApiError(err);
+      }
+    },
+
+    async reactivateVersion(signalId: string) {
+      const signal = this.selectedSignal ?? this.items.find((s) => s.id === signalId);
+      if (
+        !signal ||
+        signal.id !== signalId ||
+        signal.is_current_version ||
+        signal.name_has_current_version !== false
+      ) {
+        return;
+      }
+      const { promote } = usePromoteDialog();
+      const reason = await promote({
+        title: "Reactivate signal",
+        message: `Restore "${signal.name}" as the live current version for this tenant.`,
+        confirmLabel: "Reactivate",
+        reasonPlaceholder: "Why is this signal being reactivated?",
+      });
+      if (!reason) return;
+      try {
+        await signalsApi.reactivate(signalId, { promotionReason: reason });
+        await this.loadAll(this.page);
+        if (this.selectedId === signalId) {
+          await this.selectSignal(signalId);
+        } else {
+          void this.loadVersionHistory(signalId);
+        }
+        useUiStore().notify("Signal reactivated.");
       } catch (err) {
         useAuthStore().handleApiError(err);
       }

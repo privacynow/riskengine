@@ -3,14 +3,14 @@
     <div class="result-summary">
       <div class="result-metric">
         <div class="result-metric-label">Result</div>
-        <div class="result-metric-value">{{ detail.final_decision_value || "—" }}</div>
+        <div class="result-metric-value">{{ detail.decision_outcome || detail.final_decision_value || "—" }}</div>
       </div>
       <div class="result-metric">
         <div class="result-metric-label">Cost</div>
         <div class="result-metric-value">{{ detail.cost_incurred ?? "—" }}</div>
       </div>
       <div class="result-metric">
-        <div class="result-metric-label">Flow</div>
+        <div class="result-metric-label">Checkpoint</div>
         <div class="result-metric-value">{{ detail.checkpoint_name || "—" }}</div>
       </div>
     </div>
@@ -33,9 +33,9 @@
       <RouterLink
         v-if="detail.checkpoint_id"
         class="btn-secondary btn-sm"
-        :to="flowLink"
+        :to="checkpointLink"
       >
-        Open flow
+        Open checkpoint
       </RouterLink>
       <RouterLink class="btn-primary btn-sm" :to="testLink">Run similar test</RouterLink>
     </div>
@@ -71,7 +71,7 @@ const traceSteps = computed((): TraceStep[] => {
   }));
 });
 
-const flowLink = computed(() =>
+const checkpointLink = computed(() =>
   props.detail?.checkpoint_id
     ? routeWithTenant({
         name: "checkpoint-detail",
