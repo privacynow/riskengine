@@ -154,6 +154,14 @@ def compute_execution_set(
     return needed
 
 
+class DependencyCycleError(ValueError):
+    """Raised when signal dependency graph contains a cycle."""
+
+    def __init__(self, nodes: list[str]):
+        self.nodes = nodes
+        super().__init__(f"Cyclic signal dependencies: {', '.join(sorted(nodes))}")
+
+
 def topological_execution_order(
     signal_names: Set[str],
     graph: Mapping[str, Set[str]],
@@ -178,9 +186,9 @@ def topological_execution_order(
                 in_degree[node] -= 1
                 if in_degree[node] == 0:
                     ready.append(node)
-    for node in signal_names:
-        if node not in ordered:
-            ordered.append(node)
+    cyclic = [n for n in signal_names if in_degree[n] > 0]
+    if cyclic:
+        raise DependencyCycleError(cyclic)
     return ordered
 
 
@@ -351,6 +359,32 @@ def build_execution_plan(
     )
     ordered = topological_execution_order(execution_set, graph, signals_by_name)
     return ordered, execution_set, graph
+
+
+def validate_checkpoint_dependency_graph(
+    dsl_expression: str,
+    signal_rows: Sequence[dict[str, str]],
+) -> None:
+    """Raise DependencyCycleError when linked signal bodies form a cycle in the execution set."""
+
+    class _Sig:
+        def __init__(self, name: str, body: str | None):
+            self.name = name
+            self.type = "expression"
+            self.expression_body = body
+            self.request_url_params_template = None
+            self.request_body_template = None
+            self.request_headers_template = None
+            self.function_params_template = None
+            self.order_of_evaluation = 1
+            self.execution_role = "referenced_policy"
+
+    signals = [_Sig(row["name"], row.get("expression_body")) for row in signal_rows]
+    build_execution_plan(
+        dsl_expression=dsl_expression,
+        signals=signals,
+        include_manual_test=False,
+    )
 
 
 def group_parallel_batches(ordered_names: List[str], signals_by_name: Mapping[str, Any]) -> List[List[str]]:

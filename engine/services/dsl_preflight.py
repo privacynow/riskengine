@@ -36,7 +36,20 @@ def preflight_dsl(
     binding_mode: BindingMode | None = None,
     expression_kind: str = "checkpoint",
     known_names: Sequence[str] | None = None,
+    cycle_check_signals: Sequence[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     names = list(signal_names or []) + list(known_names or [])
     mode = binding_mode_for_expression_kind(expression_kind, binding_mode)
-    return validate_expression(expression, names, mode).as_dict()
+    result = validate_expression(expression, names, mode).as_dict()
+    if cycle_check_signals and expression_kind == "checkpoint":
+        from .execution_planner import DependencyCycleError, validate_checkpoint_dependency_graph
+
+        try:
+            validate_checkpoint_dependency_graph(
+                expression,
+                cycle_check_signals,
+            )
+        except DependencyCycleError as exc:
+            result["ok"] = False
+            result["errors"] = list(result.get("errors", [])) + [str(exc)]
+    return result

@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from ..audit import persist_signal_logs
+from .promotion_audit import record_promotion_audit
 from .tenant_budget import apply_tenant_budget_usage
 
 
@@ -29,8 +30,20 @@ def persist_decision_outcome(
     pending_signal_logs: list[dict[str, Any]],
     pending_db_cache_writes: list[dict[str, Any]],
     tenant_budget_apply_units: int = 0,
-) -> None:
+    budget_override_audit: dict[str, Any] | None = None,
+) -> tuple[str, str]:
     """Write decision_log, signal audit rows, cache rows, and tenant budget in one transaction."""
+    outcome = decision_outcome
+    reason = decision_reason
+
+    if tenant_budget_apply_units > 0:
+        force_tenant = budget_override_audit is not None
+        if not apply_tenant_budget_usage(
+            cur, tenant_id, tenant_budget_apply_units, force=force_tenant
+        ):
+            outcome = "REFER"
+            reason = "tenant_budget_exceeded_at_persist"
+
     cur.execute(
         """
         INSERT INTO decision_log
@@ -45,9 +58,9 @@ def persist_decision_outcome(
             checkpoint_id,
             tenant_id,
             applicant_id,
-            decision_outcome,
-            decision_outcome,
-            decision_reason,
+            outcome,
+            outcome,
+            reason,
             degraded,
             actual_cost_units,
             estimated_cost_units,
@@ -126,5 +139,7 @@ def persist_decision_outcome(
                     cache_item["applicant_key"],
                 ),
             )
-    apply_tenant_budget_usage(cur, tenant_id, tenant_budget_apply_units)
+    if budget_override_audit:
+        record_promotion_audit(cur, **budget_override_audit)
     conn.commit()
+    return outcome, reason

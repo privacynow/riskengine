@@ -6,6 +6,10 @@ from fastapi import HTTPException
 
 from ...db import get_db_connection
 from ...models import CheckpointSignalCreateUpdate
+from ...services.planner_validation import (
+    validate_criticality,
+    validate_execution_role,
+)
 from ...services.admin_responses import admin_mutation
 from ...services.pagination import (
     MAX_PAGE_SIZE,
@@ -56,6 +60,8 @@ def create_checkpoint_signal(payload: CheckpointSignalCreateUpdate) -> dict:
         _validate_checkpoint_signal_association(
             cur, payload.checkpoint_id, payload.signal_id
         )
+        criticality = validate_criticality(payload.criticality)
+        execution_role = validate_execution_role(payload.execution_role)
         cur.execute(
             """
             INSERT INTO checkpoint_signals (
@@ -69,8 +75,8 @@ def create_checkpoint_signal(payload: CheckpointSignalCreateUpdate) -> dict:
                 payload.checkpoint_id,
                 payload.signal_id,
                 payload.priority_override,
-                payload.criticality,
-                payload.execution_role,
+                criticality,
+                execution_role,
                 payload.stage_override,
                 payload.vendor_audit_after_decline,
             ),
@@ -112,7 +118,9 @@ def list_checkpoint_signals(
         cur = conn.cursor()
         base_query = """
             SELECT cs.id, cs.checkpoint_id, cs.signal_id,
-                   c.name as checkpoint_name, s.name as signal_name
+                   c.name as checkpoint_name, s.name as signal_name,
+                   cs.priority_override, cs.criticality, cs.execution_role,
+                   cs.stage_override, cs.vendor_audit_after_decline
               FROM checkpoint_signals cs
               JOIN checkpoints c ON cs.checkpoint_id = c.id
               JOIN signals s ON cs.signal_id = s.id
@@ -139,6 +147,11 @@ def list_checkpoint_signals(
                 "signal_id": str(r[2]),
                 "checkpoint_name": r[3],
                 "signal_name": r[4],
+                "priority_override": r[5],
+                "criticality": r[6],
+                "execution_role": r[7],
+                "stage_override": r[8],
+                "vendor_audit_after_decline": r[9],
             }
             for r in rows
         ]

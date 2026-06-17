@@ -9,9 +9,11 @@ from ..cache import in_memory_signal_cache
 from ..config import logger
 from ..db import db_cursor
 from ..models import DecisionRequest, DecisionResponse, DecisionCostSummary, SignalExecutionSummary
+from .budget_tracker import BudgetTracker, admit_signals_under_budget
 from .decision_persist import persist_decision_outcome
 from .dsl import extract_dsl_identifiers
 from .execution_planner import (
+    DependencyCycleError,
     ExecutionStatus,
     SignalExecutionRecord,
     build_execution_plan,
@@ -22,10 +24,18 @@ from .execution_planner import (
     should_skip_expensive_after_decline,
     coerce_terminal_decline,
     EXECUTION_ROLE_MANUAL_TEST,
+    OutcomeResolution,
+    DecisionOutcome,
 )
 from .signals import coerce_signal_value, invoke_signal
 from .templates import extract_placeholders_from_text
-from .tenant_budget import load_tenant_budget, reserve_tenant_budget
+from .tenant_budget import (
+    finalize_tenant_budget_signal,
+    lease_tenant_budget_units,
+    load_tenant_budget,
+    normalize_override_reason,
+    tenant_budget_remaining_units,
+)
 from .tenancy import (
     CheckpointRow,
     ExecutableSignalRow,
@@ -199,6 +209,7 @@ async def execute_decision(
     *,
     include_manual_test: bool = False,
     budget_override: bool = False,
+    override_reason: Optional[str] = None,
 ) -> DecisionResponse:
     ctx = load_decision_execution_context(tenant_id, request, checkpoint_id)
     cp_row = ctx.cp_row
@@ -226,18 +237,80 @@ async def execute_decision(
     pending_memory_cache_writes: list[tuple[Any, ...]] = []
     pending_db_cache_writes: list[dict[str, Any]] = []
 
-    estimated_total = sum(s.cost for s in signals if s.name in dsl_required_names)
-    reserved_total = 0
-    actual_total = 0
-
     tenant_budget = load_tenant_budget(tenant_id)
-    tenant_remaining: Optional[int] = tenant_budget.remaining_units if tenant_budget else None
-
-    ordered_names, execution_set, _graph = build_execution_plan(
-        dsl_expression=dsl_expression,
-        signals=signals,
-        include_manual_test=include_manual_test,
+    budget_tracker = BudgetTracker(
+        checkpoint_cap=ctx.max_cost,
+        tenant_limit=tenant_budget.limit_units if tenant_budget else None,
+        tenant_used=(
+            tenant_budget.used_units + tenant_budget.reserved_units if tenant_budget else 0
+        ),
+        budget_override=budget_override,
     )
+    use_tenant_db_leases = tenant_budget is not None and not budget_override
+
+    override_audit: dict[str, Any] | None = None
+    if budget_override:
+        reason = normalize_override_reason(override_reason)
+        override_audit = {
+            "tenant_id": tenant_id,
+            "resource_type": "test_decision",
+            "resource_id": checkpoint_id,
+            "resource_name": cp_row.name,
+            "actor_id": actor_id or "unknown",
+            "promotion_reason": reason,
+            "action": "budget_override",
+            "source": "test_lab",
+        }
+
+    try:
+        ordered_names, execution_set, _graph = build_execution_plan(
+            dsl_expression=dsl_expression,
+            signals=signals,
+            include_manual_test=include_manual_test,
+        )
+    except DependencyCycleError as exc:
+        logger.error("Dependency cycle in checkpoint %s: %s", checkpoint_id, exc)
+        resolution = OutcomeResolution(DecisionOutcome.ERROR, "dependency_cycle")
+        cost_summary = DecisionCostSummary(
+            estimated_units=0,
+            reserved_units=0,
+            actual_units=0,
+            budget_units=ctx.max_cost,
+            tenant_budget_remaining_units=budget_tracker.tenant_remaining_after_commit,
+        )
+        with db_cursor() as (conn, cur):
+            persist_decision_outcome(
+                conn,
+                cur,
+                decision_id=decision_id,
+                checkpoint_id=checkpoint_id,
+                tenant_id=tenant_id,
+                applicant_id=request.applicant_id,
+                correlation_id=request.correlation_id,
+                decision_timestamp=decision_started_at,
+                decision_outcome=resolution.outcome.value,
+                decision_reason=resolution.reason,
+                degraded=False,
+                estimated_cost_units=0,
+                reserved_cost_units=0,
+                actual_cost_units=0,
+                budget_units=ctx.max_cost,
+                pending_signal_logs=[],
+                pending_db_cache_writes=[],
+                tenant_budget_apply_units=0,
+                budget_override_audit=override_audit,
+            )
+        return DecisionResponse(
+            decision_id=decision_id,
+            decision_outcome=resolution.outcome.value,
+            decision_reason=resolution.reason,
+            degraded=False,
+            cost=cost_summary,
+            signals=[],
+            signal_results={},
+        )
+
+    estimated_total = sum(signals_by_name[name].cost for name in execution_set)
 
     def remaining_checkpoint_seconds() -> Optional[float]:
         if checkpoint_deadline is None:
@@ -261,23 +334,16 @@ async def execute_decision(
             return 0.0
         return min(per_signal, remaining)
 
-    def budget_allows(row: ExecutableSignalRow, spent: int) -> bool:
-        est = row.cost
-        if not budget_override and ctx.max_cost is not None and spent + est > ctx.max_cost:
-            return False
-        if tenant_budget and not budget_override:
-            if not reserve_tenant_budget(tenant_id, est, tenant_budget):
-                return False
-        return True
-
     async def run_signal(row: ExecutableSignalRow) -> SignalExecutionRecord:
-        nonlocal reserved_total, actual_total, terminal_decline
+        nonlocal terminal_decline
+        reserved_units = row.cost
         started = datetime.utcnow()
         success = True
         value = None
         error_message: Optional[str] = None
         cache_hit = False
         attempt_started = False
+        db_leased_units = 0
 
         placeholders_list = set()
         for tmpl in (
@@ -306,6 +372,7 @@ async def execute_decision(
             pending_signal_logs.append(
                 _log_payload(decision_id, request.applicant_id, row, rec, started, partial_params)
             )
+            budget_tracker.commit_actual(reserved_units=reserved_units, actual_units=0)
             return rec
 
         timeout = effective_signal_timeout(row)
@@ -321,6 +388,7 @@ async def execute_decision(
             pending_signal_logs.append(
                 _log_payload(decision_id, request.applicant_id, row, rec, started, partial_params)
             )
+            budget_tracker.commit_actual(reserved_units=reserved_units, actual_units=0)
             return rec
 
         applicant_key = None if row.global_reuse else request.applicant_id
@@ -351,8 +419,25 @@ async def execute_decision(
                     )
 
         if value is None:
+            if use_tenant_db_leases:
+                if not lease_tenant_budget_units(tenant_id, row.cost):
+                    budget_tracker.release_reserve(reserved_units)
+                    rec = SignalExecutionRecord(
+                        name=row.name,
+                        signal_id=row.id,
+                        status=ExecutionStatus.SKIPPED_BUDGET,
+                        criticality=row.criticality,
+                        estimated_cost_units=row.cost,
+                        skip_reason_code="tenant_budget_exceeded",
+                    )
+                    pending_signal_logs.append(
+                        _log_payload(
+                            decision_id, request.applicant_id, row, rec, started, partial_params
+                        )
+                    )
+                    return rec
+                db_leased_units = row.cost
             attempt_started = True
-            reserved_total += row.cost
             try:
                 value = await asyncio.wait_for(
                     invoke_signal(
@@ -411,7 +496,10 @@ async def execute_decision(
         actual = compute_actual_cost(
             row, success=success, attempt_started=attempt_started, cache_hit=cache_hit
         )
-        actual_total += actual
+        if db_leased_units > 0:
+            finalize_tenant_budget_signal(tenant_id, db_leased_units, actual)
+            budget_tracker.tenant_actual_charged += actual
+        budget_tracker.commit_actual(reserved_units=reserved_units, actual_units=actual)
 
         if success and value is not None:
             produced[row.name] = coerce_signal_value(value)
@@ -427,7 +515,7 @@ async def execute_decision(
             status=status,
             criticality=row.criticality,
             estimated_cost_units=row.cost,
-            reserved_cost_units=row.cost if attempt_started else 0,
+            reserved_cost_units=reserved_units,
             actual_cost_units=actual,
             cache_hit=cache_hit,
             value=produced.get(row.name),
@@ -467,7 +555,7 @@ async def execute_decision(
         if checkpoint_time_exhausted():
             break
 
-        runnable: List[ExecutableSignalRow] = []
+        candidates: List[ExecutableSignalRow] = []
         for name in batch_names:
             row = signals_by_name[name]
             if name in records:
@@ -517,18 +605,19 @@ async def execute_decision(
                     skip_reason="terminal_decline_path",
                 )
                 continue
-            if not budget_allows(row, actual_total):
-                _record_skip(
-                    row=row,
-                    status=ExecutionStatus.SKIPPED_BUDGET,
-                    records=records,
-                    decision_id=decision_id,
-                    applicant_id=request.applicant_id,
-                    pending_logs=pending_signal_logs,
-                    skip_reason="budget_exceeded",
-                )
-                continue
-            runnable.append(row)
+            candidates.append(row)
+
+        runnable, budget_skipped = admit_signals_under_budget(candidates, budget_tracker)
+        for row in budget_skipped:
+            _record_skip(
+                row=row,
+                status=ExecutionStatus.SKIPPED_BUDGET,
+                records=records,
+                decision_id=decision_id,
+                applicant_id=request.applicant_id,
+                pending_logs=pending_signal_logs,
+                skip_reason="budget_exceeded",
+            )
 
         if not runnable:
             continue
@@ -541,6 +630,7 @@ async def execute_decision(
         else:
             if checkpoint_time_exhausted():
                 for row in runnable:
+                    budget_tracker.release_reserve(row.cost)
                     _record_skip(
                         row=row,
                         status=ExecutionStatus.FAILED,
@@ -568,6 +658,7 @@ async def execute_decision(
                 for task in pending:
                     sig = tasks[task]
                     if sig.name not in records:
+                        budget_tracker.release_reserve(sig.cost)
                         _record_skip(
                             row=sig,
                             status=ExecutionStatus.FAILED,
@@ -596,16 +687,17 @@ async def execute_decision(
         if name in records
     ]
 
+    tenant_remaining = tenant_budget_remaining_units(tenant_id) if tenant_budget else None
     cost_summary = DecisionCostSummary(
         estimated_units=estimated_total,
-        reserved_units=reserved_total,
-        actual_units=actual_total,
+        reserved_units=budget_tracker.checkpoint_total_reserved,
+        actual_units=budget_tracker.checkpoint_actual,
         budget_units=ctx.max_cost,
         tenant_budget_remaining_units=tenant_remaining,
     )
 
     with db_cursor() as (conn, cur):
-        persist_decision_outcome(
+        persist_outcome, persist_reason = persist_decision_outcome(
             conn,
             cur,
             decision_id=decision_id,
@@ -618,12 +710,33 @@ async def execute_decision(
             decision_reason=resolution.reason,
             degraded=resolution.degraded,
             estimated_cost_units=estimated_total,
-            reserved_cost_units=reserved_total,
-            actual_cost_units=actual_total,
+            reserved_cost_units=budget_tracker.checkpoint_total_reserved,
+            actual_cost_units=budget_tracker.checkpoint_actual,
             budget_units=ctx.max_cost,
             pending_signal_logs=pending_signal_logs,
             pending_db_cache_writes=pending_db_cache_writes,
-            tenant_budget_apply_units=actual_total,
+            tenant_budget_apply_units=(
+                budget_tracker.checkpoint_actual
+                if tenant_budget and budget_override
+                else 0
+            ),
+            budget_override_audit=override_audit,
+        )
+
+    if persist_outcome != resolution.outcome.value:
+        resolution = OutcomeResolution(
+            DecisionOutcome(persist_outcome),
+            persist_reason,
+            degraded=resolution.degraded,
+        )
+        cost_summary = DecisionCostSummary(
+            estimated_units=estimated_total,
+            reserved_units=budget_tracker.checkpoint_total_reserved,
+            actual_units=budget_tracker.checkpoint_actual,
+            budget_units=ctx.max_cost,
+            tenant_budget_remaining_units=tenant_budget_remaining_units(tenant_id)
+            if tenant_budget
+            else None,
         )
 
     for item in pending_memory_cache_writes:

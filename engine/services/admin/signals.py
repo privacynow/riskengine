@@ -15,6 +15,7 @@ from ...services.pagination import (
 )
 from ...services.resource_lifecycle import assert_not_current_signal
 from ...services.signal_types import normalize_signal_type
+from ...services.planner_validation import validate_billable_event, validate_cache_scope
 from ...types import OptionalUuidStr, UuidStr
 from .common import (
     admin_signal_item_from_row,
@@ -25,6 +26,11 @@ from .common import (
     validate_signal_templates,
 )
 
+_SIGNAL_PLANNER_COLUMNS = """
+                       s.default_priority, s.billable_event, s.cache_scope,
+                       s.vendor_name, s.vendor_product, s.is_expensive_vendor,
+"""
+
 
 def create_signal(payload: SignalCreateUpdate) -> dict:
     conn = get_db_connection()
@@ -33,6 +39,8 @@ def create_signal(payload: SignalCreateUpdate) -> dict:
     try:
         validate_signal_templates(payload)
         signal_type = normalize_signal_type(payload.type)
+        validate_billable_event(payload.billable_event)
+        validate_cache_scope(payload.cache_scope)
         if signal_type == "expression" and payload.expression_body:
             result = validate_expression(
                 payload.expression_body,
@@ -147,6 +155,7 @@ def list_signals(
                        s.request_body_template, s.request_headers_template,
                        s.bearer_token, s.allow_caching, s.global_reuse,
                        s.function_params_template,
+""" + _SIGNAL_PLANNER_COLUMNS + """
                        CASE WHEN scv.signal_id IS NOT NULL THEN true ELSE false END as is_current_version,
                        EXISTS (
                            SELECT 1
@@ -172,6 +181,7 @@ def list_signals(
                        s.request_body_template, s.request_headers_template,
                        s.bearer_token, s.allow_caching, s.global_reuse,
                        s.function_params_template,
+""" + _SIGNAL_PLANNER_COLUMNS + """
                        CASE WHEN scv.signal_id IS NOT NULL THEN true ELSE false END as is_current_version,
                        EXISTS (
                            SELECT 1
@@ -196,6 +206,7 @@ def list_signals(
                        s.request_body_template, s.request_headers_template,
                        s.bearer_token, s.allow_caching, s.global_reuse,
                        s.function_params_template,
+""" + _SIGNAL_PLANNER_COLUMNS + """
                        CASE WHEN scv.signal_id IS NOT NULL THEN true ELSE false END as is_current_version,
                        EXISTS (
                            SELECT 1
@@ -250,6 +261,7 @@ def get_signal(signal_id: UuidStr, *, auth: AuthContext) -> dict:
                    s.request_body_template, s.request_headers_template,
                    s.bearer_token, s.allow_caching, s.global_reuse,
                    s.function_params_template,
+""" + _SIGNAL_PLANNER_COLUMNS + """
                    CASE WHEN scv.signal_id IS NOT NULL THEN true ELSE false END AS is_current_version,
                    EXISTS (
                        SELECT 1

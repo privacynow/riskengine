@@ -68,6 +68,11 @@ export type CheckpointSignal = {
   signal_id: string;
   checkpoint_name?: string;
   signal_name?: string;
+  priority_override?: number | null;
+  criticality?: string;
+  execution_role?: string;
+  stage_override?: number | null;
+  vendor_audit_after_decline?: boolean;
 };
 
 export type DecisionSummary = {

@@ -1,4 +1,7 @@
+import pytest
+
 from engine.services.execution_planner import (
+    DependencyCycleError,
     build_execution_plan,
     compute_execution_set,
     resolve_outcome,
@@ -124,3 +127,11 @@ class TestExecutionPlanner:
         )
         assert outcome.outcome.value == "APPROVE"
         assert outcome.degraded is True
+
+    def test_dependency_cycle_raises(self):
+        with pytest.raises(DependencyCycleError):
+            build_execution_plan(
+                dsl_expression="a",
+                signals=[_row("a", expr="b"), _row("b", expr="a")],
+                include_manual_test=False,
+            )

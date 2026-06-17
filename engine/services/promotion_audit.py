@@ -34,12 +34,12 @@ def record_promotion_audit(
     cur,
     *,
     tenant_id: str,
-    resource_type: ResourceType,
+    resource_type: str,
     resource_id: str,
     resource_name: str,
     actor_id: str,
     promotion_reason: str,
-    action: PromotionAction = "promote",
+    action: str = "promote",
     source: str = "make_current",
 ) -> None:
     cur.execute(

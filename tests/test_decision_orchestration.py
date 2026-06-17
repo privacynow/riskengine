@@ -97,6 +97,10 @@ class TestDecisionOrchestration:
 
         def _noop_persist(conn, cur, **kwargs):
             conn.commit()
+            return (
+                kwargs.get("decision_outcome", "APPROVE"),
+                kwargs.get("decision_reason", "policy_pass"),
+            )
 
         monkeypatch.setattr(decision_mod, "persist_decision_outcome", _noop_persist)
 
@@ -242,6 +246,10 @@ class TestDecisionOrchestration:
         def capture_persist(conn, cur, **kwargs):
             captured.extend(kwargs.get("pending_signal_logs", []))
             conn.commit()
+            return (
+                kwargs.get("decision_outcome", "APPROVE"),
+                kwargs.get("decision_reason", "policy_pass"),
+            )
 
         monkeypatch.setattr(decision_mod, "persist_decision_outcome", capture_persist)
         monkeypatch.setattr(
@@ -287,6 +295,10 @@ class TestDecisionOrchestration:
         def capture_persist(conn, cur, **kwargs):
             captured.extend(kwargs.get("pending_signal_logs", []))
             conn.commit()
+            return (
+                kwargs.get("decision_outcome", "APPROVE"),
+                kwargs.get("decision_reason", "policy_pass"),
+            )
 
         async def fake_invoke(*, expression_body, **kwargs):
             if expression_body == "slow":

@@ -10,8 +10,12 @@ from ...services.dsl import validate_expression
 from ...services.pagination import MAX_PAGE_SIZE, clamp_pagination
 from ...services.resource_lifecycle import assert_not_current_checkpoint
 from ...services.templates import extract_placeholders_from_text
+from ...services.planner_validation import (
+    validate_budget_exceeded_policy,
+    validate_vendor_failure_policy,
+)
 from ...types import OptionalUuidStr, UuidStr
-from .common import collect_all_pages, raise_admin_error
+from .common import checkpoint_item_from_row, collect_all_pages, raise_admin_error
 
 
 def _validate_checkpoint_dsl(dsl_expression: str, signal_ids: list[str], cur) -> None:
@@ -111,6 +115,8 @@ def create_checkpoint(payload: CheckpointCreateRequest) -> dict:
         _assert_signals_same_tenant(cur, payload.tenant_id, signal_ids)
         _assert_unique_logical_signal_names(cur, signal_ids)
         _validate_checkpoint_dsl(payload.dsl_expression, signal_ids, cur)
+        validate_budget_exceeded_policy(payload.budget_exceeded_policy)
+        validate_vendor_failure_policy(payload.vendor_failure_policy)
 
         cur.execute(
             """
@@ -179,7 +185,19 @@ def list_checkpoints(
     try:
         base_query = """
             SELECT c.id, c.tenant_id, c.name, c.description, c.type, c.dsl_expression,
-                   c.method_of_call, c.max_cost, c.override_cost_flag, c.timeout_seconds,
+                   c.method_of_call, c.max_cost, c.override_cost_flag,
+                   c.budget_exceeded_policy, c.vendor_failure_policy,
+                   c.terminal_decline_signal_names, c.timeout_seconds,
+                   CASE 
+                       WHEN cv.checkpoint_id IS NOT NULL THEN true 
+                       ELSE false 
+                   END as is_current_version,
+                   EXISTS (
+                       SELECT 1
+                         FROM checkpoint_current_version cvn
+                        WHERE cvn.tenant_id = c.tenant_id
+                          AND cvn.name = c.name
+                   ) as name_has_current_version,
                    c.created_at, c.updated_at,
                    t.name as tenant_name,
                    COALESCE(
@@ -194,17 +212,7 @@ def list_checkpoints(
                        FROM checkpoint_signals cs
                        JOIN signals s ON cs.signal_id = s.id
                        WHERE cs.checkpoint_id = c.id), '[]'
-                   ) as signals,
-                   CASE 
-                       WHEN cv.checkpoint_id IS NOT NULL THEN true 
-                       ELSE false 
-                   END as is_current_version,
-                   EXISTS (
-                       SELECT 1
-                         FROM checkpoint_current_version cvn
-                        WHERE cvn.tenant_id = c.tenant_id
-                          AND cvn.name = c.name
-                   ) as name_has_current_version
+                   ) as signals
             FROM checkpoints c
             LEFT JOIN tenants t ON c.tenant_id = t.id
             LEFT JOIN checkpoint_current_version cv ON cv.checkpoint_id = c.id
@@ -235,23 +243,13 @@ def list_checkpoints(
 
         checkpoints = []
         for row in cur.fetchall():
+            base = checkpoint_item_from_row(row[:15])
             checkpoint = {
-                "id": str(row[0]),
-                "tenant_id": str(row[1]),
-                "name": row[2],
-                "description": row[3],
-                "type": row[4],
-                "dsl_expression": row[5],
-                "method_of_call": row[6],
-                "max_cost": row[7],
-                "override_cost_flag": row[8],
-                "timeout_seconds": row[9],
-                "created_at": row[10].isoformat() if row[10] else None,
-                "updated_at": row[11].isoformat() if row[11] else None,
-                "tenant_name": row[12],
-                "signals": row[13],
-                "is_current_version": row[14],
-                "name_has_current_version": row[15],
+                **base,
+                "created_at": row[15].isoformat() if row[15] else None,
+                "updated_at": row[16].isoformat() if row[16] else None,
+                "tenant_name": row[17],
+                "signals": row[18],
                 "param_placeholders": extract_placeholders_from_text(row[5]) if row[5] else [],
             }
             checkpoints.append(checkpoint)
@@ -293,7 +291,9 @@ def get_checkpoint(checkpoint_id: UuidStr, *, auth: AuthContext) -> dict:
         cur.execute(
             """
             SELECT c.id, c.tenant_id, c.name, c.description, c.type, c.dsl_expression,
-                   c.method_of_call, c.max_cost, c.override_cost_flag, c.timeout_seconds,
+                   c.method_of_call, c.max_cost, c.override_cost_flag,
+                   c.budget_exceeded_policy, c.vendor_failure_policy,
+                   c.terminal_decline_signal_names, c.timeout_seconds,
                    CASE WHEN cv.checkpoint_id IS NOT NULL THEN true ELSE false END,
                    EXISTS (
                        SELECT 1
@@ -311,20 +311,7 @@ def get_checkpoint(checkpoint_id: UuidStr, *, auth: AuthContext) -> dict:
         if not row:
             raise HTTPException(status_code=404, detail="Checkpoint not found.")
         assert_admin_tenant_access(auth, str(row[1]))
-        return {
-            "id": str(row[0]),
-            "tenant_id": str(row[1]),
-            "name": row[2],
-            "description": row[3],
-            "type": row[4],
-            "dsl_expression": row[5],
-            "method_of_call": row[6],
-            "max_cost": row[7],
-            "override_cost_flag": row[8],
-            "timeout_seconds": row[9],
-            "is_current_version": row[10],
-            "name_has_current_version": row[11],
-        }
+        return checkpoint_item_from_row(row)
     finally:
         conn.close()
 

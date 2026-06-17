@@ -63,8 +63,10 @@ def get_historical_decision(
         cur.execute(
             """
             SELECT id, checkpoint_id, tenant_id, applicant_id,
+                   decision_outcome, decision_reason, degraded,
                    final_decision_value, cost_incurred,
-                   correlation_id, decision_timestamp
+                   estimated_cost_units, reserved_cost_units, actual_cost_units,
+                   budget_units, correlation_id, decision_timestamp
               FROM decision_log
              WHERE id = %s
             """,
@@ -81,10 +83,19 @@ def get_historical_decision(
             "checkpoint_id": str(drow[1]),
             "tenant_id": str(drow[2]),
             "applicant_id": drow[3],
-            "final_decision_value": drow[4],
-            "cost_incurred": drow[5],
-            "correlation_id": drow[6],
-            "decision_timestamp": drow[7],
+            "decision_outcome": drow[4],
+            "decision_reason": drow[5],
+            "degraded": drow[6],
+            "final_decision_value": drow[7] or drow[4],
+            "cost_incurred": drow[8],
+            "cost": {
+                "estimated_units": drow[9] or 0,
+                "reserved_units": drow[10] or 0,
+                "actual_units": drow[11] or drow[8] or 0,
+                "budget_units": drow[12],
+            },
+            "correlation_id": drow[13],
+            "decision_timestamp": drow[14],
         }
 
         cur.execute(
@@ -99,7 +110,10 @@ def get_historical_decision(
         cur.execute(
             """
             SELECT id, signal_id, applicant_id, signal_value,
-                   started_at, completed_at, cost_incurred, success
+                   started_at, completed_at, cost_incurred, success,
+                   execution_status, criticality, estimated_cost_units,
+                   reserved_cost_units, actual_cost_units, cache_hit,
+                   skip_reason_code, error_message
               FROM signal_log
              WHERE decision_log_id = %s
             """,
@@ -170,6 +184,14 @@ def get_historical_decision(
                     "completed_at": s[5],
                     "cost_incurred": s[6],
                     "success": s[7],
+                    "execution_status": s[8],
+                    "criticality": s[9],
+                    "estimated_cost_units": s[10],
+                    "reserved_cost_units": s[11],
+                    "actual_cost_units": s[12],
+                    "cache_hit": s[13],
+                    "skip_reason": s[14],
+                    "error_message": s[15],
                     "param_values": param_map,
                     "original_templates": {
                         "request_url_params_template": redact_template_for_response(sig_url_tmpl),
