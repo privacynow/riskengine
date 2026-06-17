@@ -565,7 +565,7 @@ class TestAdminHygiene:
             },
         )
         assert by_name.status_code == 200
-        assert by_name.json()["final_decision_value"] == "True"
+        assert by_name.json()["decision_outcome"] == "APPROVE"
 
         by_id = client.post(
             "/ui/test_decisions",
@@ -578,7 +578,7 @@ class TestAdminHygiene:
             },
         )
         assert by_id.status_code == 200
-        assert by_id.json()["final_decision_value"] == "False"
+        assert by_id.json()["decision_outcome"] == "DECLINE"
 
     def test_search_decisions_includes_checkpoint_name_and_tenant_filter(self, client):
         resp = client.get(
@@ -632,10 +632,10 @@ class TestAdminHygiene:
                         """
                         INSERT INTO decision_log (
                             id, checkpoint_id, tenant_id, applicant_id,
-                            final_decision_value, cost_incurred, correlation_id,
+                            final_decision_value, decision_outcome, cost_incurred, correlation_id,
                             decision_timestamp
                         )
-                        VALUES (%s, %s, %s, %s, 'True', 0, %s, NOW() - (%s * INTERVAL '1 minute'))
+                        VALUES (%s, %s, %s, %s, 'APPROVE', 'APPROVE', 0, %s, NOW() - (%s * INTERVAL '1 minute'))
                         """,
                         (
                             decision_id,
@@ -940,13 +940,14 @@ class TestAdminHygiene:
                     """
                     INSERT INTO decision_log (
                         id, checkpoint_id, tenant_id, applicant_id,
-                        final_decision_value, cost_incurred, correlation_id
+                        final_decision_value, decision_outcome, cost_incurred, correlation_id
                     ) VALUES (
                         %s,
                         '22222222-2222-2222-2222-222222222201',
                         %s,
                         'param-redaction-test',
-                        'PENDING',
+                        'INCOMPLETE',
+                        'INCOMPLETE',
                         0,
                         'param-redaction-correlation'
                     )
@@ -1041,13 +1042,14 @@ class TestAdminHygiene:
                     """
                     INSERT INTO decision_log (
                         id, checkpoint_id, tenant_id, applicant_id,
-                        final_decision_value, cost_incurred, correlation_id
+                        final_decision_value, decision_outcome, cost_incurred, correlation_id
                     ) VALUES (
                         %s,
                         '22222222-2222-2222-2222-222222222201',
                         %s,
                         'admin-log-redaction-test',
-                        'PENDING',
+                        'INCOMPLETE',
+                        'INCOMPLETE',
                         0,
                         'admin-log-redaction-correlation'
                     )

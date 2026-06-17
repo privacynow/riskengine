@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Any
 
 from ..audit import persist_signal_logs
+from .tenant_budget import apply_tenant_budget_usage
 
 
 def persist_decision_outcome(
@@ -18,32 +19,48 @@ def persist_decision_outcome(
     applicant_id: str | None,
     correlation_id: str | None,
     decision_timestamp: datetime,
-    final_decision_value: str,
-    total_cost: int,
+    decision_outcome: str,
+    decision_reason: str,
+    degraded: bool,
+    estimated_cost_units: int,
+    reserved_cost_units: int,
+    actual_cost_units: int,
+    budget_units: int | None,
     pending_signal_logs: list[dict[str, Any]],
     pending_db_cache_writes: list[dict[str, Any]],
+    tenant_budget_apply_units: int = 0,
 ) -> None:
-    """Write decision_log, signal audit rows, and cache rows in one transaction."""
+    """Write decision_log, signal audit rows, cache rows, and tenant budget in one transaction."""
     cur.execute(
         """
         INSERT INTO decision_log
         (id, checkpoint_id, tenant_id, applicant_id,
-         final_decision_value, cost_incurred, correlation_id, decision_timestamp)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+         final_decision_value, decision_outcome, decision_reason, degraded,
+         cost_incurred, estimated_cost_units, reserved_cost_units, actual_cost_units,
+         budget_units, correlation_id, decision_timestamp)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
         (
             decision_id,
             checkpoint_id,
             tenant_id,
             applicant_id,
-            final_decision_value,
-            total_cost,
+            decision_outcome,
+            decision_outcome,
+            decision_reason,
+            degraded,
+            actual_cost_units,
+            estimated_cost_units,
+            reserved_cost_units,
+            actual_cost_units,
+            budget_units,
             correlation_id,
             decision_timestamp,
         ),
     )
     persist_signal_logs(cur, pending_signal_logs)
     for cache_item in pending_db_cache_writes:
+        checkpoint_id_for_cache = cache_item.get("checkpoint_id")
         cur.execute(
             """
             INSERT INTO signal_cached_values
@@ -53,35 +70,61 @@ def persist_decision_outcome(
             """,
             (
                 cache_item["tenant_id"],
-                cache_item["checkpoint_id"],
+                checkpoint_id_for_cache,
                 cache_item["signal_id"],
                 cache_item["applicant_key"],
                 cache_item["value_str"],
                 cache_item["expires_at"],
             ),
         )
-        cur.execute(
-            """
-            UPDATE signal_cached_values
-               SET signal_value = %s,
-                   expires_at = %s,
-                   updated_at = NOW()
-             WHERE tenant_id = %s
-               AND checkpoint_id = %s
-               AND signal_id = %s
-               AND (
-                 (applicant_id IS NULL AND %s IS NULL)
-                 OR (applicant_id = %s)
-               )
-            """,
-            (
-                cache_item["value_str"],
-                cache_item["expires_at"],
-                cache_item["tenant_id"],
-                cache_item["checkpoint_id"],
-                cache_item["signal_id"],
-                cache_item["applicant_key"],
-                cache_item["applicant_key"],
-            ),
-        )
+        if cache_item.get("cache_scope") == "tenant_checkpoint_applicant":
+            cur.execute(
+                """
+                UPDATE signal_cached_values
+                   SET signal_value = %s,
+                       expires_at = %s,
+                       updated_at = NOW()
+                 WHERE tenant_id = %s
+                   AND checkpoint_id = %s
+                   AND signal_id = %s
+                   AND (
+                     (applicant_id IS NULL AND %s IS NULL)
+                     OR (applicant_id = %s)
+                   )
+                """,
+                (
+                    cache_item["value_str"],
+                    cache_item["expires_at"],
+                    cache_item["tenant_id"],
+                    checkpoint_id_for_cache,
+                    cache_item["signal_id"],
+                    cache_item["applicant_key"],
+                    cache_item["applicant_key"],
+                ),
+            )
+        else:
+            cur.execute(
+                """
+                UPDATE signal_cached_values
+                   SET signal_value = %s,
+                       expires_at = %s,
+                       updated_at = NOW()
+                 WHERE tenant_id = %s
+                   AND checkpoint_id IS NULL
+                   AND signal_id = %s
+                   AND (
+                     (applicant_id IS NULL AND %s IS NULL)
+                     OR (applicant_id = %s)
+                   )
+                """,
+                (
+                    cache_item["value_str"],
+                    cache_item["expires_at"],
+                    cache_item["tenant_id"],
+                    cache_item["signal_id"],
+                    cache_item["applicant_key"],
+                    cache_item["applicant_key"],
+                ),
+            )
+    apply_tenant_budget_usage(cur, tenant_id, tenant_budget_apply_units)
     conn.commit()

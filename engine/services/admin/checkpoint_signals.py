@@ -58,11 +58,22 @@ def create_checkpoint_signal(payload: CheckpointSignalCreateUpdate) -> dict:
         )
         cur.execute(
             """
-            INSERT INTO checkpoint_signals
-            (id, checkpoint_id, signal_id)
-            VALUES (%s, %s, %s)
+            INSERT INTO checkpoint_signals (
+                id, checkpoint_id, signal_id, priority_override, criticality,
+                execution_role, stage_override, vendor_audit_after_decline
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """,
-            (new_id, payload.checkpoint_id, payload.signal_id),
+            (
+                new_id,
+                payload.checkpoint_id,
+                payload.signal_id,
+                payload.priority_override,
+                payload.criticality,
+                payload.execution_role,
+                payload.stage_override,
+                payload.vendor_audit_after_decline,
+            ),
         )
         conn.commit()
         return admin_mutation(

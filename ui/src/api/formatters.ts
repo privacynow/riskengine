@@ -35,8 +35,11 @@ export function decisionOutcomeVariant(value?: string): string {
   if (["approve", "approved", "pass", "accept", "yes", "true"].some((k) => normalized.includes(k))) {
     return "outcome-positive";
   }
-  if (["deny", "denied", "reject", "rejected", "fail", "failed", "no", "false"].some((k) => normalized.includes(k))) {
+  if (["deny", "denied", "decline", "reject", "rejected", "fail", "failed", "no", "false", "error"].some((k) => normalized.includes(k))) {
     return "outcome-negative";
+  }
+  if (["refer", "incomplete"].some((k) => normalized.includes(k))) {
+    return "outcome-neutral";
   }
   return "outcome-neutral";
 }

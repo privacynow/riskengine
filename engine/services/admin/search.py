@@ -154,8 +154,8 @@ def search_decisions(
 
         base_query = """
             SELECT dl.id, dl.checkpoint_id, dl.tenant_id, dl.applicant_id,
-                   dl.final_decision_value, dl.cost_incurred, dl.correlation_id,
-                   dl.decision_timestamp, c.name AS checkpoint_name
+                   dl.decision_outcome, dl.final_decision_value, dl.cost_incurred,
+                   dl.correlation_id, dl.decision_timestamp, c.name AS checkpoint_name
               FROM decision_log dl
          LEFT JOIN checkpoints c ON c.id = dl.checkpoint_id
          LEFT JOIN signal_log sl ON dl.id = sl.decision_log_id
@@ -169,7 +169,8 @@ def search_decisions(
             conditions.append(
                 """
                 (
-                  dl.final_decision_value ILIKE %s
+                  dl.decision_outcome ILIKE %s
+                  OR dl.final_decision_value ILIKE %s
                   OR dl.correlation_id ILIKE %s
                   OR dl.applicant_id ILIKE %s
                   OR dl.checkpoint_id::text ILIKE %s
@@ -178,7 +179,7 @@ def search_decisions(
                 )
                 """
             )
-            params.extend([like, like, like, like, like, like])
+            params.extend([like, like, like, like, like, like, like])
 
         if from_date:
             conditions.append("dl.decision_timestamp >= %s")
@@ -205,11 +206,12 @@ def search_decisions(
                     "checkpoint_id": str(r[1]),
                     "tenant_id": str(r[2]),
                     "applicant_id": r[3],
-                    "final_decision_value": r[4],
-                    "cost_incurred": r[5],
-                    "correlation_id": r[6],
-                    "decision_timestamp": r[7].isoformat() if r[7] else None,
-                    "checkpoint_name": r[8],
+                    "decision_outcome": r[4],
+                    "final_decision_value": r[5] or r[4],
+                    "cost_incurred": r[6],
+                    "correlation_id": r[7],
+                    "decision_timestamp": r[8].isoformat() if r[8] else None,
+                    "checkpoint_name": r[9],
                 }
             )
         return build_paginated_response(items, total, page, size)

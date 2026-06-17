@@ -64,8 +64,12 @@ defineEmits<{
 
 const selectable = computed(() => !props.to);
 
-const outcomeLabel = computed(() => props.decision.final_decision_value || "—");
-const outcomeVariant = computed(() => decisionOutcomeVariant(props.decision.final_decision_value));
+const outcomeLabel = computed(
+  () => props.decision.decision_outcome || props.decision.final_decision_value || "—"
+);
+const outcomeVariant = computed(() =>
+  decisionOutcomeVariant(props.decision.decision_outcome || props.decision.final_decision_value)
+);
 const checkpointName = computed(() => props.decision.checkpoint_name || "Unknown checkpoint");
 const metaLine = computed(() => {
   const parts = [

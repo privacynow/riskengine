@@ -493,4 +493,4 @@ def test_test_runner_can_execute_test_decision():
         },
     )
     assert response.status_code == 200
-    assert response.json()["final_decision_value"] in ("True", "False")
+    assert response.json()["decision_outcome"] in ("APPROVE", "DECLINE", "REFER", "INCOMPLETE")

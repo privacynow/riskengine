@@ -11,50 +11,36 @@ from .db import db_cursor
 
 def persist_signal_log(cur, log_item: dict[str, Any]) -> None:
     """Insert one signal_log row and optional param values using the caller connection."""
-    error_message = log_item.get("error_message")
-    if error_message is not None:
-        cur.execute(
-            """
-            INSERT INTO signal_log
-            (id, decision_log_id, signal_id, applicant_id,
-             signal_value, started_at, completed_at,
-             cost_incurred, success, error_message)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
-                log_item["signal_log_id"],
-                log_item["decision_log_id"],
-                log_item["signal_id"],
-                log_item["applicant_id"],
-                log_item["signal_value"],
-                log_item["started_at"],
-                log_item["completed_at"],
-                log_item["cost_incurred"],
-                log_item["success"],
-                error_message,
-            ),
-        )
-    else:
-        cur.execute(
-            """
-            INSERT INTO signal_log
-            (id, decision_log_id, signal_id, applicant_id,
-             signal_value, started_at, completed_at,
-             cost_incurred, success)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
-                log_item["signal_log_id"],
-                log_item["decision_log_id"],
-                log_item["signal_id"],
-                log_item["applicant_id"],
-                log_item["signal_value"],
-                log_item["started_at"],
-                log_item["completed_at"],
-                log_item["cost_incurred"],
-                log_item["success"],
-            ),
-        )
+    cur.execute(
+        """
+        INSERT INTO signal_log
+        (id, decision_log_id, signal_id, applicant_id,
+         signal_value, started_at, completed_at,
+         cost_incurred, actual_cost_units, success, error_message,
+         execution_status, criticality,
+         estimated_cost_units, reserved_cost_units, cache_hit, skip_reason_code)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """,
+        (
+            log_item["signal_log_id"],
+            log_item["decision_log_id"],
+            log_item["signal_id"],
+            log_item["applicant_id"],
+            log_item.get("signal_value"),
+            log_item["started_at"],
+            log_item["completed_at"],
+            log_item.get("actual_cost_units", log_item.get("cost_incurred", 0)),
+            log_item.get("actual_cost_units", log_item.get("cost_incurred", 0)),
+            log_item["success"],
+            log_item.get("error_message"),
+            log_item.get("execution_status"),
+            log_item.get("criticality"),
+            log_item.get("estimated_cost_units", 0),
+            log_item.get("reserved_cost_units", 0),
+            log_item.get("cache_hit", False),
+            log_item.get("skip_reason_code"),
+        ),
+    )
     for param_name, param_value in log_item.get("placeholder_values", {}).items():
         cur.execute(
             """

@@ -12,6 +12,45 @@ from tests.conftest import SAMPLE_TENANT
 SAMPLE_ONBOARDING_CHECKPOINT = "22222222-2222-2222-2222-222222222201"
 
 
+def _checkpoint_row(**kwargs):
+    from engine.services.tenancy import CheckpointRow
+
+    defaults = {
+        "id": SAMPLE_ONBOARDING_CHECKPOINT,
+        "tenant_id": SAMPLE_TENANT,
+        "name": "orch-test",
+        "description": None,
+        "type": "onboarding",
+        "dsl_expression": "True",
+        "method_of_call": None,
+        "max_cost": 100,
+        "override_cost_flag": False,
+        "budget_exceeded_policy": "refer",
+        "vendor_failure_policy": "refer",
+        "terminal_decline_signal_names": (),
+        "timeout_seconds": 30,
+    }
+    defaults.update(kwargs)
+    return CheckpointRow(**defaults)
+
+
+def _execution_context(signals, **cp_kwargs):
+    from engine.services import decision as decision_mod
+
+    cp = _checkpoint_row(**cp_kwargs)
+    return decision_mod.DecisionExecutionContext(
+        cp_row=cp,
+        checkpoint_id=cp.id,
+        dsl_expression=cp.dsl_expression,
+        max_cost=cp.max_cost,
+        budget_exceeded_policy=cp.budget_exceeded_policy,
+        vendor_failure_policy=cp.vendor_failure_policy,
+        terminal_decline_signal_names=cp.terminal_decline_signal_names,
+        timeout_seconds=cp.timeout_seconds,
+        signals=signals,
+    )
+
+
 def _expression_signal(
     name: str,
     *,
@@ -20,6 +59,7 @@ def _expression_signal(
     timeout_seconds: int = 30,
     expression_body: str = "True",
     cost: int = 1,
+    criticality: str = "preferred",
 ) -> ExecutableSignalRow:
     return ExecutableSignalRow(
         id=str(uuid.uuid5(uuid.NAMESPACE_OID, f"test-signal-{name}")),
@@ -32,6 +72,7 @@ def _expression_signal(
         timeout_seconds=timeout_seconds,
         can_run_in_parallel=parallel,
         order_of_evaluation=order,
+        effective_stage=order,
         http_method=None,
         request_url_params_template=None,
         request_body_template=None,
@@ -40,6 +81,7 @@ def _expression_signal(
         allow_caching=False,
         global_reuse=False,
         function_params_template=None,
+        criticality=criticality,
     )
 
 
@@ -81,27 +123,13 @@ class TestDecisionOrchestration:
         monkeypatch.setattr(
             decision_mod,
             "load_decision_execution_context",
-            lambda tenant_id, request, checkpoint_id=None: decision_mod.DecisionExecutionContext(
-                cp_row=CheckpointRow(
-                    id=checkpoint_id or SAMPLE_ONBOARDING_CHECKPOINT,
-                    tenant_id=tenant_id,
-                    name="orch-test",
-                    description=None,
-                    type="onboarding",
-                    dsl_expression="score_gate",
-                    method_of_call=None,
-                    max_cost=10,
-                    override_cost_flag=True,
-                    timeout_seconds=30,
-                ),
-                checkpoint_id=checkpoint_id or SAMPLE_ONBOARDING_CHECKPOINT,
+            lambda tenant_id, request, checkpoint_id=None: _execution_context(
+                [_expression_signal("score_gate", expression_body="request_score > 10")],
+                id=checkpoint_id or SAMPLE_ONBOARDING_CHECKPOINT,
+                tenant_id=tenant_id,
+                name="orch-test",
                 dsl_expression="score_gate",
-                max_cost=10,
-                override_cost_flag=True,
-                timeout_seconds=30,
-                signals=[
-                    _expression_signal("score_gate", expression_body="request_score > 10")
-                ],
+                max_cost=None,
             ),
         )
 
@@ -141,16 +169,12 @@ class TestDecisionOrchestration:
         monkeypatch.setattr(
             decision_mod,
             "fetch_checkpoint_row_by_id",
-            lambda cur, tenant_id, checkpoint_id: CheckpointRow(
+            lambda cur, tenant_id, checkpoint_id: _checkpoint_row(
                 id=checkpoint_id,
                 tenant_id=tenant_id,
                 name="deadline-test",
-                description=None,
-                type="onboarding",
                 dsl_expression="slow_signal",
-                method_of_call=None,
-                max_cost=10,
-                override_cost_flag=True,
+                max_cost=None,
                 timeout_seconds=1,
             ),
         )
@@ -163,8 +187,7 @@ class TestDecisionOrchestration:
             )
         )
 
-        assert response.signal_results["slow_signal"] is False
-        assert response.final_decision_value == "False"
+        assert response.decision_outcome in ("INCOMPLETE", "DECLINE")
 
     def test_parallel_batch_runs_concurrently(self, monkeypatch):
         from engine.services import decision as decision_mod
@@ -192,17 +215,12 @@ class TestDecisionOrchestration:
         monkeypatch.setattr(
             decision_mod,
             "fetch_checkpoint_row_by_id",
-            lambda cur, tenant_id, checkpoint_id: CheckpointRow(
+            lambda cur, tenant_id, checkpoint_id: _checkpoint_row(
                 id=checkpoint_id,
                 tenant_id=tenant_id,
                 name="parallel-test",
-                description=None,
-                type="onboarding",
                 dsl_expression="parallel_a and parallel_b",
-                method_of_call=None,
-                max_cost=10,
-                override_cost_flag=True,
-                timeout_seconds=30,
+                max_cost=None,
             ),
         )
 
@@ -230,8 +248,8 @@ class TestDecisionOrchestration:
             decision_mod,
             "fetch_executable_signal_rows",
             lambda cur, tenant_id, checkpoint_id: [
-                _expression_signal("cheap_signal", cost=1),
-                _expression_signal("expensive_signal", cost=50, order=2),
+                _expression_signal("cheap_signal", cost=1, criticality="required"),
+                _expression_signal("expensive_signal", cost=50, order=2, criticality="required"),
             ],
         )
 
@@ -240,17 +258,12 @@ class TestDecisionOrchestration:
         monkeypatch.setattr(
             decision_mod,
             "fetch_checkpoint_row_by_id",
-            lambda cur, tenant_id, checkpoint_id: CheckpointRow(
+            lambda cur, tenant_id, checkpoint_id: _checkpoint_row(
                 id=checkpoint_id,
                 tenant_id=tenant_id,
                 name="cost-skip-test",
-                description=None,
-                type="onboarding",
                 dsl_expression="cheap_signal and expensive_signal",
-                method_of_call=None,
                 max_cost=1,
-                override_cost_flag=False,
-                timeout_seconds=30,
             ),
         )
 
@@ -262,7 +275,7 @@ class TestDecisionOrchestration:
             )
         )
 
-        skipped = [item for item in captured if item.get("error_message") == "cost_budget_exceeded"]
+        skipped = [item for item in captured if item.get("skip_reason_code") == "budget_exceeded"]
         assert skipped
         assert skipped[0]["success"] is False
 
@@ -308,16 +321,12 @@ class TestDecisionOrchestration:
         monkeypatch.setattr(
             decision_mod,
             "fetch_checkpoint_row_by_id",
-            lambda cur, tenant_id, checkpoint_id: CheckpointRow(
+            lambda cur, tenant_id, checkpoint_id: _checkpoint_row(
                 id=checkpoint_id,
                 tenant_id=tenant_id,
                 name="partial-timeout-test",
-                description=None,
-                type="onboarding",
                 dsl_expression="fast_signal and slow_signal",
-                method_of_call=None,
-                max_cost=10,
-                override_cost_flag=True,
+                max_cost=None,
                 timeout_seconds=1,
             ),
         )
@@ -334,7 +343,9 @@ class TestDecisionOrchestration:
         )
 
         assert response.signal_results["fast_signal"] is True
-        assert response.signal_results["slow_signal"] is False
+        slow = next((s for s in response.signals if s.name == "slow_signal"), None)
+        assert slow is not None
+        assert slow.status == "failed"
         timeout_logs = [
             item for item in captured if item.get("error_message") == "checkpoint_timeout"
         ]
@@ -372,17 +383,12 @@ class TestDecisionAuditDurability:
         monkeypatch.setattr(
             decision_mod,
             "fetch_checkpoint_row_by_id",
-            lambda cur, tenant_id, checkpoint_id: CheckpointRow(
+            lambda cur, tenant_id, checkpoint_id: _checkpoint_row(
                 id=checkpoint_id,
                 tenant_id=tenant_id,
                 name="audit-durability-test",
-                description=None,
-                type="onboarding",
                 dsl_expression="age_check",
-                method_of_call=None,
-                max_cost=10,
-                override_cost_flag=True,
-                timeout_seconds=30,
+                max_cost=None,
             ),
         )
 
@@ -402,7 +408,7 @@ class TestDecisionAuditDurability:
             )
             cur.execute(
                 """
-                SELECT final_decision_value
+                SELECT decision_outcome
                   FROM decision_log
                  WHERE id = %s
                 """,
@@ -411,7 +417,7 @@ class TestDecisionAuditDurability:
             row = cur.fetchone()
             assert row is not None
             assert row[0] != "PENDING"
-            assert row[0] == response.final_decision_value
+            assert row[0] == response.decision_outcome
             cur.execute(
                 """
                 SELECT COUNT(*)
@@ -458,17 +464,12 @@ class TestDecisionAuditDurability:
         monkeypatch.setattr(
             decision_mod,
             "fetch_checkpoint_row_by_id",
-            lambda cur, tenant_id, checkpoint_id: CheckpointRow(
+            lambda cur, tenant_id, checkpoint_id: _checkpoint_row(
                 id=checkpoint_id,
                 tenant_id=tenant_id,
                 name="audit-durability-cache-test",
-                description=None,
-                type="onboarding",
                 dsl_expression="cached_audit_signal",
-                method_of_call=None,
-                max_cost=10,
-                override_cost_flag=True,
-                timeout_seconds=30,
+                max_cost=None,
             ),
         )
 

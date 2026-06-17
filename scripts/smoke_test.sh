@@ -69,7 +69,7 @@ response="$(curl -sf -X POST "${BASE_URL}/decisions" \
   -d '{"checkpoint_name":"Onboarding","applicant_id":"smoke-applicant","correlation_id":"SMOKE_TEST"}')"
 
 [[ "${response}" == *'"decision_id"'* ]]
-[[ "${response}" == *'"final_decision_value":"True"'* ]]
+[[ "${response}" == *'"decision_outcome":"APPROVE"'* ]]
 [[ "${response}" != *"inactive_demo"* ]]
 
 echo "-> POST /decisions (OTHER BANK token — same checkpoint name, different tenant)"
@@ -79,7 +79,7 @@ response_other="$(curl -sf -X POST "${BASE_URL}/decisions" \
   -d '{"checkpoint_name":"Onboarding","applicant_id":"smoke-applicant","correlation_id":"SMOKE_TEST_OTHER"}')"
 
 [[ "${response_other}" == *'"decision_id"'* ]]
-[[ "${response_other}" == *'"final_decision_value":"False"'* ]]
+[[ "${response_other}" == *'"decision_outcome":"DECLINE"'* ]]
 
 echo "-> GET /ui/tenants without auth returns 401"
 status="$(curl -s -o /dev/null -w "%{http_code}" "${BASE_URL}/ui/tenants?page=1&size=1")"

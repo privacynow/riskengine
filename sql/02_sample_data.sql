@@ -38,6 +38,12 @@ SET id = '11111111-1111-1111-1111-111111111111'
 WHERE name = 'SAMPLE LENDING'
   AND id <> '11111111-1111-1111-1111-111111111111';
 
+INSERT INTO tenant_budgets (tenant_id, limit_units, window_days, window_mode)
+SELECT '11111111-1111-1111-1111-111111111111', 100000, 30, 'anchored'
+WHERE NOT EXISTS (
+  SELECT 1 FROM tenant_budgets WHERE tenant_id = '11111111-1111-1111-1111-111111111111'
+);
+
 
 ---------------------------------------
 -- 2) SAMPLE LENDING checkpoints
@@ -1590,7 +1596,8 @@ ON CONFLICT (tenant_id, name) DO UPDATE
 -- SAMPLE LENDING checkpoint DSL + descriptions
 UPDATE checkpoints
    SET description = 'Application intake — identity, watchlists, and KYC score before account opening.',
-       dsl_expression = 'age_check and not (blocklist_check) and (kyc_score > 80)'
+       dsl_expression = 'age_check and not (blocklist_check) and (kyc_score > 80)',
+       terminal_decline_signal_names = ARRAY['blocklist_check']
  WHERE id = '22222222-2222-2222-2222-222222222201';
 
 UPDATE checkpoints
@@ -1649,8 +1656,20 @@ UPDATE signals
  WHERE id = '33333333-3333-3333-3333-333333333306';
 
 UPDATE signals
-   SET description = 'Know-your-customer composite score (0–100) from external identity bureau.'
+   SET description = 'Know-your-customer composite score (0–100) from external identity bureau.',
+       is_expensive_vendor = TRUE,
+       billable_event = 'attempt',
+       cache_scope = 'tenant_applicant_signal',
+       default_priority = 200
  WHERE id = '33333333-3333-3333-3333-333333333307';
+
+UPDATE signals
+   SET description = 'Primary bureau credit score (300–850) from external credit pull.',
+       is_expensive_vendor = TRUE,
+       billable_event = 'attempt',
+       cache_scope = 'tenant_applicant_signal',
+       default_priority = 100
+ WHERE id = '33333333-3333-3333-3333-333333333308';
 
 UPDATE signals
    SET description = 'Primary bureau credit score (300–850) from external credit pull.'

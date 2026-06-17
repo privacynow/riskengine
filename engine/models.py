@@ -17,6 +17,9 @@ class AdminTestDecisionRequest(BaseModel):
     applicant_id: Optional[str] = None
     correlation_id: Optional[str] = None
     parameters: Optional[Dict[str, Any]] = None
+    include_manual_test: bool = Field(False, alias="includeManualTest")
+    budget_override: bool = Field(False, alias="budgetOverride")
+    override_reason: Optional[str] = Field(None, alias="overrideReason")
 
 
 class DecisionRequest(BaseModel):
@@ -35,11 +38,34 @@ class DecisionRequest(BaseModel):
         return data
 
 
+class DecisionCostSummary(BaseModel):
+    estimated_units: int = 0
+    reserved_units: int = 0
+    actual_units: int = 0
+    budget_units: Optional[int] = None
+    tenant_budget_remaining_units: Optional[int] = None
+
+
+class SignalExecutionSummary(BaseModel):
+    name: str
+    status: str
+    criticality: str
+    estimated_cost_units: int = 0
+    reserved_cost_units: int = 0
+    actual_cost_units: int = 0
+    cache_hit: bool = False
+    skip_reason: Optional[str] = None
+    value: Optional[Any] = None
+
+
 class DecisionResponse(BaseModel):
     decision_id: str
-    final_decision_value: str
-    cost_incurred: int
-    signal_results: Dict[str, Any]
+    decision_outcome: str
+    decision_reason: str
+    degraded: bool = False
+    cost: DecisionCostSummary
+    signals: List[SignalExecutionSummary] = Field(default_factory=list)
+    signal_results: Dict[str, Any] = Field(default_factory=dict)
 
 
 class TenantCreateUpdate(BaseModel):
@@ -66,8 +92,11 @@ class CheckpointCreateRequest(BaseModel):
     type: str
     dsl_expression: str
     method_of_call: Optional[str] = None
-    max_cost: int = 0
+    max_cost: Optional[int] = None
     override_cost_flag: bool = False
+    budget_exceeded_policy: str = "refer"
+    vendor_failure_policy: str = "refer"
+    terminal_decline_signal_names: List[str] = Field(default_factory=list)
     timeout_seconds: int = 30
     signal_ids: List[str] = Field(default_factory=list, alias="signals")
     copy_from_checkpoint_id: Optional[str] = Field(None, alias="copyFromCheckpointId")
@@ -106,6 +135,12 @@ class SignalCreateUpdate(BaseModel):
     method_of_call: Optional[str] = None
     expression_body: Optional[str] = None
     cost: int = 0
+    default_priority: int = 500
+    billable_event: str = "success"
+    cache_scope: str = "tenant_applicant_signal"
+    vendor_name: Optional[str] = None
+    vendor_product: Optional[str] = None
+    is_expensive_vendor: bool = False
     cache_expiration_seconds: int = 0
     timeout_seconds: int = 30
     can_run_in_parallel: bool = False
@@ -184,6 +219,11 @@ class CheckpointSignalCreateUpdate(BaseModel):
 
     checkpoint_id: str
     signal_id: str
+    priority_override: Optional[int] = Field(None, alias="priorityOverride")
+    criticality: str = "preferred"
+    execution_role: str = Field("referenced_policy", alias="executionRole")
+    stage_override: Optional[int] = Field(None, alias="stageOverride")
+    vendor_audit_after_decline: bool = Field(False, alias="vendorAuditAfterDecline")
 
     @field_validator("checkpoint_id", "signal_id", mode="before")
     @classmethod

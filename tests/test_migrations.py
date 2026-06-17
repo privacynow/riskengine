@@ -13,6 +13,7 @@ def test_schema_migrations_table_exists():
     assert "001_promotion_audit.sql" in versions
     assert "002_promotion_audit_action.sql" in versions
     assert "003_signal_log_error_message.sql" in versions
+    assert "004_execution_planner.sql" in versions
 
 
 def test_signal_log_error_message_column():

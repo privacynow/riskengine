@@ -3,7 +3,7 @@
     <div class="result-summary">
       <div class="result-metric">
         <div class="result-metric-label">Result</div>
-        <div class="result-metric-value">{{ detail.final_decision_value || "—" }}</div>
+        <div class="result-metric-value">{{ detail.decision_outcome || detail.final_decision_value || "—" }}</div>
       </div>
       <div class="result-metric">
         <div class="result-metric-label">Cost</div>

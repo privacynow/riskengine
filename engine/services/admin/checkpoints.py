@@ -116,8 +116,10 @@ def create_checkpoint(payload: CheckpointCreateRequest) -> dict:
             """
             INSERT INTO checkpoints (
                 tenant_id, name, description, type, dsl_expression,
-                method_of_call, max_cost, override_cost_flag, timeout_seconds
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                method_of_call, max_cost, override_cost_flag,
+                budget_exceeded_policy, vendor_failure_policy,
+                terminal_decline_signal_names, timeout_seconds
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
             """,
             (
@@ -129,6 +131,9 @@ def create_checkpoint(payload: CheckpointCreateRequest) -> dict:
                 payload.method_of_call,
                 payload.max_cost,
                 payload.override_cost_flag,
+                payload.budget_exceeded_policy,
+                payload.vendor_failure_policy,
+                payload.terminal_decline_signal_names or [],
                 payload.timeout_seconds,
             ),
         )

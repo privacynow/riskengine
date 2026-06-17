@@ -102,6 +102,7 @@ def admin_signal_item_from_row(r, *, include_current: bool) -> dict:
         "method_of_call": r[5],
         "expression_body": r[6],
         "cost": r[7],
+        "cost_units": r[7],
         "cache_expiration_seconds": r[8],
         "timeout_seconds": r[9],
         "can_run_in_parallel": r[10],
@@ -116,11 +117,31 @@ def admin_signal_item_from_row(r, *, include_current: bool) -> dict:
         "function_params_template": redact_template_for_response(r[19]),
         "param_placeholders": signal_placeholders_from_row(r),
     }
+    if len(r) > 25:
+        item["default_priority"] = r[20]
+        item["billable_event"] = r[21]
+        item["cache_scope"] = r[22]
+        item["vendor_name"] = r[23]
+        item["vendor_product"] = r[24]
+        item["is_expensive_vendor"] = r[25]
+        current_idx = 26
+        name_idx = 27
+        updated_idx = 28
+    else:
+        item["default_priority"] = 500
+        item["billable_event"] = "success"
+        item["cache_scope"] = "tenant_applicant_signal"
+        item["vendor_name"] = None
+        item["vendor_product"] = None
+        item["is_expensive_vendor"] = False
+        current_idx = 20
+        name_idx = 21
+        updated_idx = 22
     if include_current:
-        item["is_current_version"] = r[20]
-        item["name_has_current_version"] = r[21]
-    if len(r) > 22:
-        item["updated_at"] = r[22].isoformat() if r[22] else None
+        item["is_current_version"] = r[current_idx]
+        item["name_has_current_version"] = r[name_idx]
+    if len(r) > updated_idx:
+        item["updated_at"] = r[updated_idx].isoformat() if r[updated_idx] else None
     return item
 
 
@@ -157,6 +178,28 @@ def promotion_audit_row_to_item(row) -> dict:
 
 
 def checkpoint_item_from_row(row) -> dict:
+    if len(row) > 13:
+        item = {
+            "id": str(row[0]),
+            "tenant_id": str(row[1]),
+            "name": row[2],
+            "description": row[3],
+            "type": row[4],
+            "dsl_expression": row[5],
+            "method_of_call": row[6],
+            "max_cost": row[7],
+            "max_cost_units": row[7],
+            "override_cost_flag": row[8],
+            "budget_exceeded_policy": row[9],
+            "vendor_failure_policy": row[10],
+            "terminal_decline_signal_names": list(row[11] or []),
+            "timeout_seconds": row[12],
+            "is_current_version": row[13],
+            "name_has_current_version": row[14],
+        }
+        if len(row) > 15:
+            item["updated_at"] = row[15].isoformat() if row[15] else None
+        return item
     item = {
         "id": str(row[0]),
         "tenant_id": str(row[1]),
@@ -166,6 +209,7 @@ def checkpoint_item_from_row(row) -> dict:
         "dsl_expression": row[5],
         "method_of_call": row[6],
         "max_cost": row[7],
+        "max_cost_units": row[7],
         "override_cost_flag": row[8],
         "timeout_seconds": row[9],
         "is_current_version": row[10],

@@ -78,6 +78,9 @@ export type DecisionSummary = {
   applicant_id?: string;
   correlation_id?: string;
   final_decision_value?: string;
+  decision_outcome?: string;
+  decision_reason?: string;
+  degraded?: boolean;
   cost_incurred?: number;
   decision_timestamp?: string;
   /** @deprecated use decision_timestamp */
@@ -128,6 +131,9 @@ export type DecisionDetail = {
   applicant_id?: string;
   correlation_id?: string;
   final_decision_value?: string;
+  decision_outcome?: string;
+  decision_reason?: string;
+  degraded?: boolean;
   cost_incurred?: number;
   decision_timestamp?: string;
   signals?: DecisionSignalTrace[];
@@ -142,10 +148,33 @@ export type DecisionTestPayload = {
   parameters?: Record<string, string>;
 };
 
+export type DecisionCostSummary = {
+  estimated_units: number;
+  reserved_units: number;
+  actual_units: number;
+  budget_units?: number | null;
+  tenant_budget_remaining_units?: number | null;
+};
+
+export type SignalExecutionSummary = {
+  name: string;
+  status: string;
+  criticality: string;
+  estimated_cost_units: number;
+  reserved_cost_units: number;
+  actual_cost_units: number;
+  cache_hit: boolean;
+  skip_reason?: string | null;
+  value?: unknown;
+};
+
 export type DecisionTestResponse = {
   decision_id: string;
-  final_decision_value: string;
-  cost_incurred: number;
+  decision_outcome: string;
+  decision_reason: string;
+  degraded: boolean;
+  cost: DecisionCostSummary;
+  signals: SignalExecutionSummary[];
   signal_results: Record<string, unknown>;
 };
 

@@ -69,7 +69,9 @@ def list_checkpoint_versions(checkpoint_id: UuidStr, *, auth: AuthContext) -> li
         cur.execute(
             """
             SELECT c.id, c.tenant_id, c.name, c.description, c.type, c.dsl_expression,
-                   c.method_of_call, c.max_cost, c.override_cost_flag, c.timeout_seconds,
+                   c.method_of_call, c.max_cost, c.override_cost_flag,
+                   c.budget_exceeded_policy, c.vendor_failure_policy,
+                   c.terminal_decline_signal_names, c.timeout_seconds,
                    CASE WHEN cv.checkpoint_id IS NOT NULL THEN true ELSE false END,
                    EXISTS (
                        SELECT 1

@@ -24,4 +24,6 @@ async def admin_test_decision(
         decision_request,
         actor_id=auth.actor_id,
         checkpoint_id=payload.checkpoint_id,
+        include_manual_test=payload.include_manual_test,
+        budget_override=payload.budget_override,
     )

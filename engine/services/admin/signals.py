@@ -50,8 +50,10 @@ def create_signal(payload: SignalCreateUpdate) -> dict:
                 can_run_in_parallel, order_of_evaluation, http_method,
                 request_url_params_template, request_body_template,
                 request_headers_template, bearer_token, allow_caching,
-                global_reuse, function_params_template
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                global_reuse, function_params_template,
+                default_priority, billable_event, cache_scope,
+                vendor_name, vendor_product, is_expensive_vendor
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """,
             (
@@ -74,6 +76,12 @@ def create_signal(payload: SignalCreateUpdate) -> dict:
                 payload.allow_caching,
                 payload.global_reuse,
                 payload.function_params_template,
+                payload.default_priority,
+                payload.billable_event,
+                payload.cache_scope,
+                payload.vendor_name,
+                payload.vendor_product,
+                payload.is_expensive_vendor,
             ),
         )
 
