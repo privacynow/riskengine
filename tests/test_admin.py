@@ -8,6 +8,10 @@ from tests.conftest import OTHER_TENANT, SAMPLE_TENANT, TEST_ADMIN_TOKEN, TEST_S
 from tests.seed_reset import SEED_CHECKPOINT_CURRENT
 
 SEED_ONBOARDING_CHECKPOINT = SEED_CHECKPOINT_CURRENT[SAMPLE_TENANT]["Onboarding"]
+SEED_FUNDS_DISBURSEMENT_CHECKPOINT = SEED_CHECKPOINT_CURRENT[SAMPLE_TENANT]["Funds Disbursement"]
+FUNDS_DISBURSEMENT_DSL = (
+    "disbursement_limit_check and (previous_delinquency == 0) and credit_pass"
+)
 
 
 @pytest.fixture
@@ -728,6 +732,45 @@ class TestAdminHygiene:
         )
         assert bad.status_code == 200
         assert bad.json()["ok"] is False
+
+    def test_dsl_preflight_resolves_linked_signals_from_checkpoint_id(self, client):
+        resp = client.post(
+            "/ui/dsl_preflight",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "dsl_expression": FUNDS_DISBURSEMENT_DSL,
+                "checkpoint_id": SEED_FUNDS_DISBURSEMENT_CHECKPOINT,
+                "signal_names": [],
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+
+    def test_dsl_preflight_empty_names_without_checkpoint_id_fails(self, client):
+        resp = client.post(
+            "/ui/dsl_preflight",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "dsl_expression": FUNDS_DISBURSEMENT_DSL,
+                "signal_names": [],
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ok"] is False
+        assert any("credit_pass" in err for err in body["errors"])
+
+    def test_dsl_preflight_new_checkpoint_draft_requires_client_signal_names(self, client):
+        resp = client.post(
+            "/ui/dsl_preflight",
+            headers=auth_header(TEST_ADMIN_TOKEN),
+            json={
+                "dsl_expression": "age_check and kyc_score > 80",
+                "signal_names": [],
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is False
 
     def test_admin_mutation_response_envelope(self, client):
         resp = client.post(

@@ -105,6 +105,12 @@ docker compose up -d --build
 bash scripts/smoke_test.sh
 ```
 
+For local redeploys, `scripts/run.sh` reapplies schema and seed SQL with `ON_ERROR_STOP=1`; SQL errors stop the deploy. Check seed reapply safety with:
+
+```sh
+bash scripts/test_seed_idempotency.sh
+```
+
 Visual regression fixtures are not part of normal database initialization. Seed them only when running browser/visual tests:
 
 ```sh

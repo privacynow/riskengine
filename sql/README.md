@@ -33,15 +33,22 @@ Runtime tokens in tests reference these tenant IDs via `tests/conftest.py` — n
 1. **SAMPLE LENDING tenant**
 2. **Checkpoints** — Onboarding through Servicing (stable names + DSLs for tests)
 3. **Signals** — variables, endpoints, functions, expressions
-4. **Associations** — checkpoint ↔ signal links
+4. **Associations** — checkpoint ↔ signal links (include expression prerequisites)
 5. **Variable defaults** — realistic demo values for variable signals
-6. **OTHER BANK** — stricter onboarding policy with variable signals (smoke expects decline)
-7. **Current-version pointers** — `checkpoint_current_version`, `signal_current_version`
+6. **OTHER BANK** — stricter onboarding policy with compositional expression signals
+7. **Current-version pointers** — explicit stable `(tenant_id, name, id)` upserts (not bulk SELECT)
 8. **Sample decision_log row** — overview/search demo data
 9. **Inactive signal** — strict resolution demo (linked but excluded from execution)
 10. **Policy refresh** — `UPDATE` statements for checkpoint DSL, signal expressions, descriptions, and demo values on existing volumes (re-run section 10 without `docker down -v` to upgrade policy)
 
-All inserts are idempotent (`WHERE NOT EXISTS` / `ON CONFLICT`) so re-applying seed logic on an existing volume is safe.
+All inserts are idempotent (`WHERE NOT EXISTS` / `ON CONFLICT`) so re-applying seed logic on an existing volume is safe. Current-version pointers must stay deterministic: use explicit stable IDs in sections 7 and 10, not `INSERT ... SELECT` over all rows, because version history intentionally creates duplicate logical names.
+
+Verify seed reapply behavior after changing this folder:
+
+```bash
+bash scripts/test_seed_idempotency.sh
+docker compose exec -T -e RUN_INTEGRATION_TESTS=1 risk-engine pytest -q tests/test_seed_idempotency.py tests/test_seed_execution.py
+```
 
 ## API-only cleanup vs full reset
 
@@ -95,6 +102,7 @@ Use `--include-seed-tenants --yes` only when you intend to wipe seeded demo tena
 ## Curating changes
 
 - Prefer **stable UUIDs** for entities referenced in tests, smoke scripts, or docs.
+- Keep current-version pointer sections explicit and deterministic.
 - Keep **mock URLs** on `127.0.0.1:8000` — outbound checks allow localhost only.
 - Do **not** embed bearer tokens or real secrets in seed data.
 - When changing demo policy, update section 10 refresh `UPDATE`s and this README.

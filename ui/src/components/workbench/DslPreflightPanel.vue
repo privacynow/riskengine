@@ -24,14 +24,18 @@ import type { IconName } from "@/icons";
 const props = withDefaults(
   defineProps<{
     expression: string;
+    checkpointId?: string;
     signalNames?: string[];
+    signalNamesLoading?: boolean;
     autoCheck?: boolean;
     expressionKind?: "checkpoint" | "signal_expression";
     bindingMode?: "strict" | "warn_unknown" | "syntax_only";
     hintWhenOk?: string;
   }>(),
   {
+    checkpointId: undefined,
     signalNames: () => [],
+    signalNamesLoading: false,
     autoCheck: true,
     expressionKind: "checkpoint",
     bindingMode: undefined,
@@ -46,7 +50,12 @@ const warnings = ref<string[]>([]);
 
 let debounceTimer: number | null = null;
 
+const awaitingSignalContext = computed(
+  () => props.signalNamesLoading && !props.checkpointId
+);
+
 const panelClass = computed(() => {
+  if (awaitingSignalContext.value) return "dsl-preflight-panel--pending";
   if (loading.value) return "dsl-preflight-panel--pending";
   if (ok.value === true) return "dsl-preflight-panel--ok";
   if (ok.value === false) return "dsl-preflight-panel--fail";
@@ -54,13 +63,14 @@ const panelClass = computed(() => {
 });
 
 const statusIcon = computed((): IconName => {
-  if (loading.value) return "refresh";
+  if (awaitingSignalContext.value || loading.value) return "refresh";
   if (ok.value === true) return "zap";
   if (ok.value === false) return "alert";
   return "layers";
 });
 
 const statusTitle = computed(() => {
+  if (awaitingSignalContext.value) return "DSL preflight";
   if (loading.value) return "DSL preflight";
   if (ok.value === true) return "DSL preflight passed";
   if (ok.value === false) return "DSL preflight failed";
@@ -68,7 +78,12 @@ const statusTitle = computed(() => {
 });
 
 const statusHint = computed(() => {
-  if (!props.expression.trim()) return "Enter a DSL expression to validate syntax before save or promotion.";
+  if (awaitingSignalContext.value) {
+    return "Loading linked signals before validating identifiers…";
+  }
+  if (!props.expression.trim()) {
+    return "Enter a DSL expression to validate syntax before save or promotion.";
+  }
   if (ok.value === true && !warnings.value.length) {
     return props.hintWhenOk ?? "Expression syntax is valid for the shared runtime DSL policy.";
   }
@@ -77,7 +92,7 @@ const statusHint = computed(() => {
 
 async function runPreflight() {
   const expr = props.expression.trim();
-  if (!expr) {
+  if (!expr || awaitingSignalContext.value) {
     ok.value = null;
     errors.value = [];
     warnings.value = [];
@@ -86,6 +101,7 @@ async function runPreflight() {
   loading.value = true;
   try {
     const result = await dslApi.preflight(expr, props.signalNames, {
+      checkpointId: props.checkpointId,
       expressionKind: props.expressionKind,
       bindingMode: props.bindingMode,
     });
@@ -110,7 +126,13 @@ function schedulePreflight() {
 }
 
 watch(
-  () => [props.expression, props.signalNames.join("|")] as const,
+  () =>
+    [
+      props.expression,
+      props.checkpointId ?? "",
+      props.signalNames.join("|"),
+      props.signalNamesLoading,
+    ] as const,
   () => schedulePreflight(),
   { immediate: true }
 );

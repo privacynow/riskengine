@@ -12,6 +12,8 @@ After linked signals run, their coerced values populate the DSL environment unde
 age_check and not blocklist_check and (kyc_score > 80)
 ```
 
+Every identifier in a checkpoint expression must correspond to a linked signal name. If a checkpoint uses an expression-derived signal such as `credit_pass`, link both the expression signal and any prerequisite signals it needs to execute, such as `credit_score`.
+
 ## Supported syntax (SimpleEval with functions disabled)
 
 - Boolean logic: `and`, `or`, `not`
@@ -33,6 +35,12 @@ Use `1 in values` where `values` is a bound name. **Inline list/tuple literals**
 
 `POST /ui/dsl_preflight`
 
+Payload options:
+
+- Existing checkpoint: pass `checkpoint_id` / `checkpointId`. The server checks access and resolves linked signal names from `checkpoint_signals`.
+- New checkpoint draft: pass `signal_names` for the signals currently selected in the form.
+- Signal expression: use `expression_kind: "signal_expression"` so unknown runtime parameter names are warnings by default.
+
 Preflight steps:
 
 1. Parse syntax with `ast.parse`
@@ -44,6 +52,8 @@ Preflight steps:
 |-------------------|-----------------|---------------------|
 | `checkpoint` | `strict` | Error |
 | `signal_expression` | `warn_unknown` | Warning |
+
+For checkpoint expressions, omitting both `checkpoint_id` and `signal_names` is intentionally strict. For example, `credit_pass and income_verification` fails preflight unless those names are linked to the checkpoint or supplied as draft signal names.
 
 ## Signal expression context
 

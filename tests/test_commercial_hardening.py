@@ -324,13 +324,10 @@ def test_admin_readonly_denied_checkpoint_write():
 
 
 def test_jwt_runtime_requires_tenant_id_claim(monkeypatch):
-    import importlib
-
-    import engine.main as main_module
+    from engine.main import app
 
     secret = "jwt-runtime-tenant-secret"
     monkeypatch.setenv("DECISION_ENGINE_JWT_HS256_SECRET", secret)
-    importlib.reload(main_module)
     token = jwt.encode(
         {
             "sub": "jwt-runtime",
@@ -340,7 +337,7 @@ def test_jwt_runtime_requires_tenant_id_claim(monkeypatch):
         secret,
         algorithm="HS256",
     )
-    client = TestClient(main_module.app)
+    client = TestClient(app)
     response = client.post(
         "/decisions",
         headers={"Authorization": f"Bearer {token}"},
@@ -356,13 +353,10 @@ def test_jwt_runtime_requires_tenant_id_claim(monkeypatch):
 
 
 def test_jwt_runtime_with_tenant_id_can_execute(monkeypatch):
-    import importlib
-
-    import engine.main as main_module
+    from engine.main import app
 
     secret = "jwt-runtime-exec-secret"
     monkeypatch.setenv("DECISION_ENGINE_JWT_HS256_SECRET", secret)
-    importlib.reload(main_module)
     token = jwt.encode(
         {
             "sub": "jwt-runtime",
@@ -373,7 +367,7 @@ def test_jwt_runtime_with_tenant_id_can_execute(monkeypatch):
         secret,
         algorithm="HS256",
     )
-    client = TestClient(main_module.app)
+    client = TestClient(app)
     response = client.post(
         "/decisions",
         headers={"Authorization": f"Bearer {token}"},

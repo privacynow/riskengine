@@ -14,6 +14,7 @@ export const dslApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         dsl_expression: dslExpression,
+        checkpoint_id: options.checkpointId,
         signal_names: signalNames,
         known_names: options.knownNames ?? [],
         binding_mode: options.bindingMode,

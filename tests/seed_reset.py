@@ -126,6 +126,9 @@ _TEST_CHECKPOINT_NAME_PATTERNS = (
     "cross-tenant-assoc-test",
     "invalid-%",
     "authoring_e2e_%",
+    "reactivate-current-guard-%",
+    "admin-version-fork-test",
+    "assoc-create-test",
 )
 
 _TEST_SIGNAL_NAME_PATTERNS = (

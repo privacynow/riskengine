@@ -80,7 +80,7 @@
           <FormSection title="DSL preflight" subtitle="Validate expression before promotion">
             <DslPreflightPanel
               :expression="activeCheckpoint.dsl_expression ?? ''"
-              :signal-names="harnessSignalNames"
+              :checkpoint-id="activeCheckpoint.id"
             />
             <pre class="code-block code-block--compact">{{ activeCheckpoint.dsl_expression }}</pre>
           </FormSection>
@@ -188,12 +188,6 @@ const { activeTenant } = storeToRefs(tenantStore);
 const activeCheckpoint = computed(() =>
   checkpoints.value.find((cp) => cp.id === selectedCheckpointId.value)
 );
-
-const harnessSignalNames = computed(() => {
-  const cpId = activeCheckpoint.value?.id;
-  if (!cpId) return [];
-  return (assocSignals.value[cpId] || []).map((sig) => sig.name);
-});
 
 const checkpointDetailLink = computed(() =>
   activeCheckpoint.value

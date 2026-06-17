@@ -25,7 +25,8 @@
       </div>
       <DslPreflightPanel
         :expression="local.dsl_expression"
-        :signal-names="authoringSignalNames"
+        :checkpoint-id="createNew ? undefined : local.id || undefined"
+        :signal-names="createNew ? authoringSignalNames : []"
       />
       <div class="form-field">
         <label>Method of call</label>

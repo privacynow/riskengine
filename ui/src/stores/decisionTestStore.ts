@@ -138,6 +138,7 @@ export const useDecisionTestStore = defineStore("decisionTest", {
           page,
           size: this.pageSize,
           tenant_id: tenantId,
+          active_only: true,
         });
         this.checkpoints = data.items;
         this.totalPages = totalPages(data.total, this.pageSize);
@@ -167,6 +168,7 @@ export const useDecisionTestStore = defineStore("decisionTest", {
           page,
           size: this.pageSize,
           tenant_id: tenantId,
+          active_only: true,
         });
         this.checkpoints = data.items;
         this.totalPages = totalPages(data.total, this.pageSize);

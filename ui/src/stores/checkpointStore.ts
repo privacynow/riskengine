@@ -83,7 +83,7 @@ export const useCheckpointStore = defineStore("checkpoint", {
       if (fromList) {
         this.detailCheckpoint = fromList;
         this.detailDraft = checkpointToDraft(fromList);
-        void this.loadDetailAssociations(id);
+        await this.loadDetailAssociations(id);
         void this.loadVersionHistory(id);
         return;
       }
@@ -111,7 +111,7 @@ export const useCheckpointStore = defineStore("checkpoint", {
         if (!this.items.some((c) => c.id === id)) {
           this.items = [cp, ...this.items];
         }
-        void this.loadDetailAssociations(id);
+        await this.loadDetailAssociations(id);
         void this.loadVersionHistory(id);
       } catch (err) {
         this.detailCheckpoint = null;

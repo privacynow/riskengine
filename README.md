@@ -6,8 +6,8 @@ Decision Engine helps teams define, run, test, and audit automated business deci
 
 - Models business decisions as lifecycle checkpoints with linked signals and rule expressions.
 - Reuses signals across decisions: integrations, variables, expression-derived values, and local functions.
-- Runs decisions with tenant isolation, cost controls, timeouts, and audit logs.
-- Lets operators test drafts, promote versions with a reason, inspect decision traces, and review signal failures.
+- Runs decisions with tenant isolation, cost controls, timeouts, and durable audit logs.
+- Lets operators preflight DSL, test drafts, promote versions with a reason, inspect decision traces, and review signal failures.
 - Audits promotion, deactivation, and reactivation; deleting a current checkpoint or signal version returns `409`.
 
 ## Quick Start
@@ -68,7 +68,8 @@ docker compose ps
 docker compose logs -f risk-engine
 docker compose down
 docker compose down -v          # reset database volume
-bash scripts/bootstrap_smoke.sh # clean DB + API smoke
+bash scripts/redeploy_all.sh    # reset volume, rebuild, wait for API, smoke test
+bash scripts/test_seed_idempotency.sh
 ```
 
 ## Reset Demo Data
@@ -82,7 +83,13 @@ docker compose up -d --build
 bash scripts/smoke_test.sh
 ```
 
-This is the most reliable path because Postgres runs `sql/01_schema.sql` and `sql/02_sample_data.sql` only when the database volume is first initialized. For visual regression data, seed the separate fixture after the stack is running:
+This is the most reliable path because it recreates Postgres, reapplies schema and seed SQL, and exercises smoke checks. Seed SQL is also designed to re-apply cleanly against an existing volume; verify that path with:
+
+```sh
+bash scripts/test_seed_idempotency.sh
+```
+
+For visual regression data, seed the separate fixture after the stack is running:
 
 ```sh
 bash scripts/seed_visual_fixture.sh

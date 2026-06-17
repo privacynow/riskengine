@@ -9,15 +9,16 @@
 -- Demo tenant: OTHER BANK — multi-tenant isolation with a stricter policy
 --
 -- Sections:
---   1. SAMPLE LENDING checkpoints (stable names for tests/smoke)
---   2. SAMPLE LENDING signals (variables, endpoints, functions, expressions)
---   3. Checkpoint ↔ signal associations
---   4. Variable signal defaults (realistic demo values)
---   5. OTHER BANK tenant + stricter onboarding policy
---   6. Current-version pointers
---   7. Sample audit row for overview/search demos
---   8. Inactive signal strict-resolution demo
---   9. Demo policy refresh (UPDATE existing rows on re-apply)
+--   1. SAMPLE LENDING tenant
+--   2. SAMPLE LENDING checkpoints (stable names for tests/smoke)
+--   3. SAMPLE LENDING signals (variables, endpoints, functions, expressions)
+--   4. Checkpoint ↔ signal associations
+--   5. Variable signal defaults (realistic demo values)
+--   6. OTHER BANK tenant + stricter onboarding policy
+--   7. Current-version pointers (deterministic stable IDs)
+--   8. Sample audit row for overview/search demos
+--   9. Inactive signal strict-resolution demo
+--  10. Demo policy refresh (UPDATE existing rows on re-apply)
 -- ==========================================================================
 
 \c risk_engine_db
@@ -873,7 +874,27 @@ WHERE NOT EXISTS (
      AND signal_id = '33333333-3333-3333-3333-333333333316'
 );
 
+INSERT INTO checkpoint_signals (id, checkpoint_id, signal_id)
+SELECT uuid_generate_v4(),
+       '22222222-2222-2222-2222-222222222204',
+       '33333333-3333-3333-3333-333333333308'
+WHERE NOT EXISTS (
+  SELECT 1 FROM checkpoint_signals
+   WHERE checkpoint_id = '22222222-2222-2222-2222-222222222204'
+     AND signal_id = '33333333-3333-3333-3333-333333333308'
+);
+
 -- Servicing
+INSERT INTO checkpoint_signals (id, checkpoint_id, signal_id)
+SELECT uuid_generate_v4(),
+       '22222222-2222-2222-2222-222222222205',
+       '33333333-3333-3333-3333-333333333303'
+WHERE NOT EXISTS (
+  SELECT 1 FROM checkpoint_signals
+   WHERE checkpoint_id = '22222222-2222-2222-2222-222222222205'
+     AND signal_id = '33333333-3333-3333-3333-333333333303'
+);
+
 INSERT INTO checkpoint_signals (id, checkpoint_id, signal_id)
 SELECT uuid_generate_v4(),
        '22222222-2222-2222-2222-222222222205',
@@ -1183,72 +1204,44 @@ WHERE NOT EXISTS (
      AND signal_id = '88888888-8888-8888-8888-888888888806'
 );
 
-INSERT INTO signal_current_version (tenant_id, name, signal_id)
-SELECT '99999999-9999-9999-9999-999999999999', 'identity_verified', '88888888-8888-8888-8888-888888888802'
-WHERE NOT EXISTS (
-  SELECT 1 FROM signal_current_version
-   WHERE tenant_id = '99999999-9999-9999-9999-999999999999'
-     AND name = 'identity_verified'
-);
-
-INSERT INTO signal_current_version (tenant_id, name, signal_id)
-SELECT '99999999-9999-9999-9999-999999999999', 'sanctions_clear', '88888888-8888-8888-8888-888888888803'
-WHERE NOT EXISTS (
-  SELECT 1 FROM signal_current_version
-   WHERE tenant_id = '99999999-9999-9999-9999-999999999999'
-     AND name = 'sanctions_clear'
-);
-
-INSERT INTO signal_current_version (tenant_id, name, signal_id)
-SELECT '99999999-9999-9999-9999-999999999999', 'credit_score', '88888888-8888-8888-8888-888888888804'
-WHERE NOT EXISTS (
-  SELECT 1 FROM signal_current_version
-   WHERE tenant_id = '99999999-9999-9999-9999-999999999999'
-     AND name = 'credit_score'
-);
-
-INSERT INTO signal_current_version (tenant_id, name, signal_id)
-SELECT '99999999-9999-9999-9999-999999999999', 'debt_to_income_ratio', '88888888-8888-8888-8888-888888888805'
-WHERE NOT EXISTS (
-  SELECT 1 FROM signal_current_version
-   WHERE tenant_id = '99999999-9999-9999-9999-999999999999'
-     AND name = 'debt_to_income_ratio'
-);
-
-INSERT INTO signal_current_version (tenant_id, name, signal_id)
-SELECT '99999999-9999-9999-9999-999999999999', 'affordability_pass', '88888888-8888-8888-8888-888888888806'
-WHERE NOT EXISTS (
-  SELECT 1 FROM signal_current_version
-   WHERE tenant_id = '99999999-9999-9999-9999-999999999999'
-     AND name = 'affordability_pass'
-);
-
-INSERT INTO checkpoint_current_version (tenant_id, name, checkpoint_id)
-SELECT
-  '99999999-9999-9999-9999-999999999999',
-  'Onboarding',
-  '88888888-8888-8888-8888-888888888801'
-WHERE NOT EXISTS (
-  SELECT 1 FROM checkpoint_current_version
-   WHERE tenant_id = '99999999-9999-9999-9999-999999999999'
-     AND name = 'Onboarding'
-);
-
 ---------------------------------------
--- 7) Current-version pointers (SAMPLE LENDING)
+-- 7) Current-version pointers (deterministic stable IDs)
 ---------------------------------------
 INSERT INTO checkpoint_current_version (tenant_id, name, checkpoint_id)
-SELECT c.tenant_id, c.name, c.id
-  FROM checkpoints c
- WHERE c.tenant_id = '11111111-1111-1111-1111-111111111111'
+VALUES
+  ('11111111-1111-1111-1111-111111111111', 'Onboarding', '22222222-2222-2222-2222-222222222201'),
+  ('11111111-1111-1111-1111-111111111111', 'Compliance', '22222222-2222-2222-2222-222222222202'),
+  ('11111111-1111-1111-1111-111111111111', 'Underwriting', '22222222-2222-2222-2222-222222222203'),
+  ('11111111-1111-1111-1111-111111111111', 'Funds Disbursement', '22222222-2222-2222-2222-222222222204'),
+  ('11111111-1111-1111-1111-111111111111', 'Servicing', '22222222-2222-2222-2222-222222222205'),
+  ('99999999-9999-9999-9999-999999999999', 'Onboarding', '88888888-8888-8888-8888-888888888801')
 ON CONFLICT (tenant_id, name) DO UPDATE
    SET checkpoint_id = EXCLUDED.checkpoint_id,
        updated_at = NOW();
 
 INSERT INTO signal_current_version (tenant_id, name, signal_id)
-SELECT s.tenant_id, s.name, s.id
-  FROM signals s
- WHERE s.tenant_id = '11111111-1111-1111-1111-111111111111'
+VALUES
+  ('11111111-1111-1111-1111-111111111111', 'age_check', '33333333-3333-3333-3333-333333333301'),
+  ('11111111-1111-1111-1111-111111111111', 'blocklist_check', '33333333-3333-3333-3333-333333333302'),
+  ('11111111-1111-1111-1111-111111111111', 'previous_delinquency', '33333333-3333-3333-3333-333333333303'),
+  ('11111111-1111-1111-1111-111111111111', 'active_loan', '33333333-3333-3333-3333-333333333304'),
+  ('11111111-1111-1111-1111-111111111111', 'doc_verification', '33333333-3333-3333-3333-333333333305'),
+  ('11111111-1111-1111-1111-111111111111', 'sanction_screening', '33333333-3333-3333-3333-333333333306'),
+  ('11111111-1111-1111-1111-111111111111', 'kyc_score', '33333333-3333-3333-3333-333333333307'),
+  ('11111111-1111-1111-1111-111111111111', 'credit_score', '33333333-3333-3333-3333-333333333308'),
+  ('11111111-1111-1111-1111-111111111111', 'income_verification', '33333333-3333-3333-3333-333333333309'),
+  ('11111111-1111-1111-1111-111111111111', 'loan_amount_check', '33333333-3333-3333-3333-333333333310'),
+  ('11111111-1111-1111-1111-111111111111', 'disbursement_limit_check', '33333333-3333-3333-3333-333333333311'),
+  ('11111111-1111-1111-1111-111111111111', 'delinquent_days', '33333333-3333-3333-3333-333333333312'),
+  ('11111111-1111-1111-1111-111111111111', 'delinquent_severity', '33333333-3333-3333-3333-333333333313'),
+  ('11111111-1111-1111-1111-111111111111', 'requested_loan_amount', '33333333-3333-3333-3333-333333333314'),
+  ('11111111-1111-1111-1111-111111111111', 'kyc_pass', '33333333-3333-3333-3333-333333333315'),
+  ('11111111-1111-1111-1111-111111111111', 'credit_pass', '33333333-3333-3333-3333-333333333316'),
+  ('99999999-9999-9999-9999-999999999999', 'identity_verified', '88888888-8888-8888-8888-888888888802'),
+  ('99999999-9999-9999-9999-999999999999', 'sanctions_clear', '88888888-8888-8888-8888-888888888803'),
+  ('99999999-9999-9999-9999-999999999999', 'credit_score', '88888888-8888-8888-8888-888888888804'),
+  ('99999999-9999-9999-9999-999999999999', 'debt_to_income_ratio', '88888888-8888-8888-8888-888888888805'),
+  ('99999999-9999-9999-9999-999999999999', 'affordability_pass', '88888888-8888-8888-8888-888888888806')
 ON CONFLICT (tenant_id, name) DO UPDATE
    SET signal_id = EXCLUDED.signal_id,
        updated_at = NOW();
@@ -1523,6 +1516,22 @@ WHERE NOT EXISTS (
 );
 
 INSERT INTO checkpoint_signals (id, checkpoint_id, signal_id)
+SELECT uuid_generate_v4(), '22222222-2222-2222-2222-222222222204', '33333333-3333-3333-3333-333333333308'
+WHERE NOT EXISTS (
+  SELECT 1 FROM checkpoint_signals
+   WHERE checkpoint_id = '22222222-2222-2222-2222-222222222204'
+     AND signal_id = '33333333-3333-3333-3333-333333333308'
+);
+
+INSERT INTO checkpoint_signals (id, checkpoint_id, signal_id)
+SELECT uuid_generate_v4(), '22222222-2222-2222-2222-222222222205', '33333333-3333-3333-3333-333333333303'
+WHERE NOT EXISTS (
+  SELECT 1 FROM checkpoint_signals
+   WHERE checkpoint_id = '22222222-2222-2222-2222-222222222205'
+     AND signal_id = '33333333-3333-3333-3333-333333333303'
+);
+
+INSERT INTO checkpoint_signals (id, checkpoint_id, signal_id)
 SELECT uuid_generate_v4(), '22222222-2222-2222-2222-222222222205', '33333333-3333-3333-3333-333333333302'
 WHERE NOT EXISTS (
   SELECT 1 FROM checkpoint_signals
@@ -1538,11 +1547,41 @@ WHERE NOT EXISTS (
      AND signal_id = '88888888-8888-8888-8888-888888888806'
 );
 
+-- Re-sync current-version pointers (deterministic; safe on re-apply)
+INSERT INTO checkpoint_current_version (tenant_id, name, checkpoint_id)
+VALUES
+  ('11111111-1111-1111-1111-111111111111', 'Onboarding', '22222222-2222-2222-2222-222222222201'),
+  ('11111111-1111-1111-1111-111111111111', 'Compliance', '22222222-2222-2222-2222-222222222202'),
+  ('11111111-1111-1111-1111-111111111111', 'Underwriting', '22222222-2222-2222-2222-222222222203'),
+  ('11111111-1111-1111-1111-111111111111', 'Funds Disbursement', '22222222-2222-2222-2222-222222222204'),
+  ('11111111-1111-1111-1111-111111111111', 'Servicing', '22222222-2222-2222-2222-222222222205'),
+  ('99999999-9999-9999-9999-999999999999', 'Onboarding', '88888888-8888-8888-8888-888888888801')
+ON CONFLICT (tenant_id, name) DO UPDATE
+   SET checkpoint_id = EXCLUDED.checkpoint_id,
+       updated_at = NOW();
+
 INSERT INTO signal_current_version (tenant_id, name, signal_id)
 VALUES
+  ('11111111-1111-1111-1111-111111111111', 'age_check', '33333333-3333-3333-3333-333333333301'),
+  ('11111111-1111-1111-1111-111111111111', 'blocklist_check', '33333333-3333-3333-3333-333333333302'),
+  ('11111111-1111-1111-1111-111111111111', 'previous_delinquency', '33333333-3333-3333-3333-333333333303'),
+  ('11111111-1111-1111-1111-111111111111', 'active_loan', '33333333-3333-3333-3333-333333333304'),
+  ('11111111-1111-1111-1111-111111111111', 'doc_verification', '33333333-3333-3333-3333-333333333305'),
+  ('11111111-1111-1111-1111-111111111111', 'sanction_screening', '33333333-3333-3333-3333-333333333306'),
+  ('11111111-1111-1111-1111-111111111111', 'kyc_score', '33333333-3333-3333-3333-333333333307'),
+  ('11111111-1111-1111-1111-111111111111', 'credit_score', '33333333-3333-3333-3333-333333333308'),
+  ('11111111-1111-1111-1111-111111111111', 'income_verification', '33333333-3333-3333-3333-333333333309'),
+  ('11111111-1111-1111-1111-111111111111', 'loan_amount_check', '33333333-3333-3333-3333-333333333310'),
+  ('11111111-1111-1111-1111-111111111111', 'disbursement_limit_check', '33333333-3333-3333-3333-333333333311'),
+  ('11111111-1111-1111-1111-111111111111', 'delinquent_days', '33333333-3333-3333-3333-333333333312'),
+  ('11111111-1111-1111-1111-111111111111', 'delinquent_severity', '33333333-3333-3333-3333-333333333313'),
   ('11111111-1111-1111-1111-111111111111', 'requested_loan_amount', '33333333-3333-3333-3333-333333333314'),
   ('11111111-1111-1111-1111-111111111111', 'kyc_pass', '33333333-3333-3333-3333-333333333315'),
   ('11111111-1111-1111-1111-111111111111', 'credit_pass', '33333333-3333-3333-3333-333333333316'),
+  ('99999999-9999-9999-9999-999999999999', 'identity_verified', '88888888-8888-8888-8888-888888888802'),
+  ('99999999-9999-9999-9999-999999999999', 'sanctions_clear', '88888888-8888-8888-8888-888888888803'),
+  ('99999999-9999-9999-9999-999999999999', 'credit_score', '88888888-8888-8888-8888-888888888804'),
+  ('99999999-9999-9999-9999-999999999999', 'debt_to_income_ratio', '88888888-8888-8888-8888-888888888805'),
   ('99999999-9999-9999-9999-999999999999', 'affordability_pass', '88888888-8888-8888-8888-888888888806')
 ON CONFLICT (tenant_id, name) DO UPDATE
    SET signal_id = EXCLUDED.signal_id,

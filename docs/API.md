@@ -62,7 +62,20 @@ Admin path parameters and UUID fields in write models (`tenant_id`, `signals`, `
 
 ### DSL preflight
 
-`POST /ui/dsl_preflight` accepts `dsl_expression`, `signal_names`, optional `known_names`, `expression_kind` (`checkpoint` | `signal_expression`), and optional `binding_mode`. Uses the same policy as runtime evaluation — see [DSL_GUIDE.md](DSL_GUIDE.md).
+`POST /ui/dsl_preflight` accepts:
+
+- `dsl_expression`
+- `signal_names` for new checkpoint drafts
+- optional `checkpoint_id` / `checkpointId` for existing checkpoints
+- optional `known_names`
+- `expression_kind` (`checkpoint` | `signal_expression`)
+- optional `binding_mode`
+
+When `checkpoint_id` is supplied, the server checks tenant access and resolves linked signal names from `checkpoint_signals` before strict validation. This is the preferred path for Test Lab and existing checkpoint edits because it avoids client-side races while associations load.
+
+New checkpoint drafts do not have an ID yet, so clients must pass selected signal names explicitly. A checkpoint DSL that references names not present in either `checkpoint_id` links or `signal_names` returns `ok: false` with unknown-identifier errors.
+
+Uses the same policy as runtime evaluation — see [DSL_GUIDE.md](DSL_GUIDE.md).
 
 ### Promotion audit
 

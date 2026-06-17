@@ -58,6 +58,10 @@ CI runs both gates. Dev toolchain was upgraded (Vite 8, Vitest 4, Playwright 1.6
 - `workflow-lifecycle.spec.ts` — workflow execution across libraries, test lab, audit
 - `lifecycle-actions.spec.ts` — checkpoint deactivate/reactivate on the lifecycle fixture
 
+**Additional behavioral coverage** (`scripts/run_playwright_ci.sh` / direct Playwright):
+
+- `test-lab-preflight.spec.ts` — Test Lab preflight resolves linked signal names server-side for existing checkpoints
+
 **Non-blocking** (`scripts/run_playwright_visual_ci.sh`, separate CI job with `continue-on-error`):
 
 - `visual-review.spec.ts` — pixel snapshots for human review; failures do not block merge
@@ -93,6 +97,10 @@ cd ui
 - `src/tests/e2e/lifecycle-actions.spec.ts` targets **`Lifecycle E2E Checkpoint`** via search and `data-testid` row/actions (`lifecycle-fixture.ts` ↔ `tests/fixtures/lifecycle_e2e_fixture.sql`).
 - `beforeEach` / `afterEach` reset the fixture through the admin API (`lifecycle-cleanup.ts`).
 - Separate from **Fixture Checkpoint** used in visual snapshots.
+
+## DSL preflight e2e
+
+`src/tests/e2e/test-lab-preflight.spec.ts` opens Test Lab directly on seeded **Funds Disbursement** and expects `DSL preflight passed`. This protects the contract where existing checkpoints send `checkpoint_id` to `/ui/dsl_preflight` and the server resolves linked signal names. New checkpoint drafts still preflight against client-selected signal names.
 
 ## Source layout
 

@@ -146,10 +146,18 @@ class DslPreflightRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     dsl_expression: str
+    checkpoint_id: Optional[str] = Field(None, alias="checkpointId")
     signal_names: List[str] = Field(default_factory=list)
     known_names: List[str] = Field(default_factory=list)
     binding_mode: Optional[Literal["strict", "warn_unknown", "syntax_only"]] = None
     expression_kind: Literal["checkpoint", "signal_expression"] = "checkpoint"
+
+    @field_validator("checkpoint_id", mode="before")
+    @classmethod
+    def _validate_checkpoint_id(cls, value: object) -> str | None:
+        if value is None or value == "":
+            return None
+        return parse_uuid(value, field="checkpoint_id")
 
 
 class PromotionRequest(BaseModel):

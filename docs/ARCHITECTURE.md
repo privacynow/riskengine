@@ -24,6 +24,8 @@ All checkpoint DSL and signal expression evaluation uses `engine/services/dsl.py
 
 SimpleEval is the language authority. See [DSL_GUIDE.md](DSL_GUIDE.md).
 
+Admin DSL preflight uses the same contract. Existing checkpoint preflight may pass `checkpoint_id`; the server checks tenant access and resolves linked signal names from `checkpoint_signals`. New checkpoint drafts pass selected signal names from the client because no checkpoint row exists yet.
+
 ## Decision evaluation
 
 `POST /decisions` (and admin `POST /ui/test_decisions`):
