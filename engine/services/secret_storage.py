@@ -8,6 +8,15 @@ from cryptography.fernet import Fernet, InvalidToken
 
 _PREFIX = "enc:v1:"
 
+ENCRYPTION_NOT_CONFIGURED_DETAIL = (
+    "Connector secret encryption is not configured. "
+    "Set DECISION_ENGINE_SECRET_ENCRYPTION_KEY before storing bearer tokens."
+)
+
+
+class SecretEncryptionNotConfiguredError(RuntimeError):
+    """Raised when persisting a connector secret without encryption configured."""
+
 
 def _fernet() -> Fernet | None:
     raw = os.environ.get("DECISION_ENGINE_SECRET_ENCRYPTION_KEY", "").strip()
@@ -28,9 +37,7 @@ def encrypt_secret(plaintext: str | None) -> str | None:
         return None
     fernet = _fernet()
     if fernet is None:
-        raise RuntimeError(
-            "Cannot store connector secret: DECISION_ENGINE_SECRET_ENCRYPTION_KEY is not set."
-        )
+        raise SecretEncryptionNotConfiguredError(ENCRYPTION_NOT_CONFIGURED_DETAIL)
     token = fernet.encrypt(value.encode("utf-8")).decode("utf-8")
     return f"{_PREFIX}{token}"
 

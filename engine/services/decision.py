@@ -64,6 +64,7 @@ async def execute_decision(
     )
 
     decision_id = str(uuid.uuid4())
+    decision_started_at = datetime.utcnow()
     cur.execute(
         """
         INSERT INTO decision_log
@@ -79,10 +80,9 @@ async def execute_decision(
             "PENDING",
             0,
             request.correlation_id,
-            datetime.utcnow(),
+            decision_started_at,
         ),
     )
-    conn.commit()
 
     signals = fetch_executable_signal_rows(cur, tenant_id, checkpoint_id)
     total_cost = 0

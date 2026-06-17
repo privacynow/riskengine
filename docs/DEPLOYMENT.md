@@ -40,7 +40,7 @@ For production identity integration, the API also accepts HS256 JWTs when config
 
 JWT claims: `sub` (actor id), `roles` (array or string), optional `tenant_id` for runtime-scoped tokens. Map identity-provider groups to `roles` at your gateway or token minting service.
 
-Role permissions are defined in `engine/permissions.py` (`admin:read`, `admin:write`, `runtime:execute`, …).
+Role permissions are defined in `engine/permissions.py`. Built-in roles include full `admin`, `runtime`, and least-privilege operator roles such as `audit_viewer`, `config_operator`, `test_runner`, `tenant_admin`, and `admin_readonly`. Map identity-provider groups to these roles at your gateway or token minting service.
 
 ### Connector secret encryption (required for connector auth)
 

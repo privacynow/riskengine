@@ -8,7 +8,7 @@ from ...services.security import (
     has_bearer_token_value,
     redact_template_for_response,
 )
-from ...services.secret_storage import encrypt_secret
+from ...services.secret_storage import SecretEncryptionNotConfiguredError, encrypt_secret
 from ...services.templates import extract_placeholders_from_text
 
 GENERIC_ADMIN_ERROR = "An internal error occurred."
@@ -17,6 +17,9 @@ GENERIC_ADMIN_ERROR = "An internal error occurred."
 def raise_admin_error(exc: Exception, *, context: str) -> None:
     if isinstance(exc, HTTPException):
         raise exc
+    if isinstance(exc, SecretEncryptionNotConfiguredError):
+        logger.error("%s: %s", context, exc)
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     logger.exception("%s", context)
     raise HTTPException(status_code=500, detail=GENERIC_ADMIN_ERROR) from exc
 

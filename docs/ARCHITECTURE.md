@@ -29,8 +29,7 @@ SimpleEval is the language authority. See [DSL_GUIDE.md](DSL_GUIDE.md).
 `POST /decisions` (and admin `POST /ui/test_decisions`):
 
 1. Loads the checkpoint (current or explicit draft ID in Test Lab)
-2. Inserts `decision_log` as `PENDING`
-3. Runs linked signals grouped by `order_of_evaluation`
+2. Runs linked signals grouped by `order_of_evaluation`
 
 ### Signal scheduling
 
@@ -53,8 +52,7 @@ Within each order group:
 Expression signals receive prior signal results plus request `parameters` whose names appear as DSL identifiers in `expression_body` (and template placeholders for HTTP/function signals).
 
 4. Evaluates checkpoint `dsl_expression`
-5. Persists signal audit rows in the same database transaction as the final `decision_log` update (no in-process-only queue)
-6. Updates `decision_log` (never left `PENDING` after orchestration completes)
+5. Persists signal audit rows and finalizes `decision_log` in one database transaction (no in-process-only queue; uncommitted `PENDING` rolls back on crash)
 
 ## Configuration writes
 

@@ -7,7 +7,7 @@ Demo database bootstrap for local Docker and integration tests. Files run in ord
 | `01_schema.sql` | Tables, indexes, current-version join tables |
 | `02_sample_data.sql` | Curated product demo tenants, checkpoints, signals, associations |
 
-Visual regression data is **not** in this folder — see `tests/fixtures/visual_fixture.sql` and `scripts/seed_visual_fixture.sh`.
+Visual regression data is **not** in this folder — see `tests/fixtures/visual_fixture.sql`, `tests/fixtures/lifecycle_e2e_fixture.sql`, and `scripts/seed_visual_fixture.sh`.
 
 ## Stable IDs (do not change without updating tests)
 

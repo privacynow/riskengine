@@ -12,4 +12,8 @@ fi
 docker compose -f "${ROOT}/docker-compose.yml" exec -T postgres \
   psql -U postgres -d risk_engine_db -v ON_ERROR_STOP=1 < "${SQL_FILE}"
 
-echo "Visual fixture seeded."
+LIFECYCLE_SQL="${ROOT}/tests/fixtures/lifecycle_e2e_fixture.sql"
+docker compose -f "${ROOT}/docker-compose.yml" exec -T postgres \
+  psql -U postgres -d risk_engine_db -v ON_ERROR_STOP=1 < "${LIFECYCLE_SQL}"
+
+echo "Visual and lifecycle e2e fixtures seeded."

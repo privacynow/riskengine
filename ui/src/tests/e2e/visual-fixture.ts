@@ -3,5 +3,5 @@ export const VISUAL_FIXTURE = {
   tenantName: "VISUAL FIXTURE BANK",
   checkpointName: "Fixture Checkpoint",
   signalName: "fixture_signal",
-  promotionSearch: "Fixture Checkpoint",
+  promotionSearch: "Seed promote",
 } as const;

@@ -371,3 +371,93 @@ class TestDecisionOrchestration:
         ]
         slow_id = str(uuid.uuid5(uuid.NAMESPACE_OID, "test-signal-slow_signal"))
         assert [item["signal_id"] for item in timeout_logs] == [slow_id]
+
+
+@pytest.mark.skipif(
+    os.environ.get("DB_HOST", "localhost") == "localhost"
+    and not os.environ.get("RUN_INTEGRATION_TESTS"),
+    reason="Integration tests require Postgres (set DB_HOST or RUN_INTEGRATION_TESTS=1)",
+)
+class TestDecisionAuditDurability:
+    def test_completed_decision_persists_atomically_without_pending_row(self, monkeypatch):
+        from engine.db import get_db_connection
+        from engine.services import decision as decision_mod
+        from engine.services.tenancy import CheckpointRow
+
+        async def true_invoke(**kwargs):
+            return True
+
+        monkeypatch.setattr(decision_mod, "invoke_signal", true_invoke)
+        from dataclasses import replace
+
+        monkeypatch.setattr(
+            decision_mod,
+            "fetch_executable_signal_rows",
+            lambda cur, tenant_id, checkpoint_id: [
+                replace(
+                    _expression_signal("age_check", expression_body="True"),
+                    id="33333333-3333-3333-3333-333333333301",
+                )
+            ],
+        )
+        monkeypatch.setattr(
+            decision_mod,
+            "fetch_checkpoint_row_by_id",
+            lambda cur, tenant_id, checkpoint_id: CheckpointRow(
+                id=checkpoint_id,
+                tenant_id=tenant_id,
+                name="audit-durability-test",
+                description=None,
+                type="onboarding",
+                dsl_expression="age_check",
+                method_of_call=None,
+                max_cost=10,
+                override_cost_flag=True,
+                timeout_seconds=30,
+            ),
+        )
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+        response = None
+        try:
+            response = asyncio.run(
+                execute_decision(
+                    conn,
+                    cur,
+                    SAMPLE_TENANT,
+                    DecisionRequest(
+                        checkpoint_name="audit-durability-test",
+                        applicant_id="audit-durability-applicant",
+                    ),
+                    checkpoint_id=SAMPLE_ONBOARDING_CHECKPOINT,
+                )
+            )
+            cur.execute(
+                """
+                SELECT final_decision_value
+                  FROM decision_log
+                 WHERE id = %s
+                """,
+                (response.decision_id,),
+            )
+            row = cur.fetchone()
+            assert row is not None
+            assert row[0] != "PENDING"
+            assert row[0] == response.final_decision_value
+            cur.execute(
+                """
+                SELECT COUNT(*)
+                  FROM signal_log
+                 WHERE decision_log_id = %s
+                """,
+                (response.decision_id,),
+            )
+            assert cur.fetchone()[0] >= 1
+        finally:
+            if response is not None:
+                cur.execute("DELETE FROM signal_log WHERE decision_log_id = %s", (response.decision_id,))
+                cur.execute("DELETE FROM decision_log WHERE id = %s", (response.decision_id,))
+                conn.commit()
+            cur.close()
+            conn.close()

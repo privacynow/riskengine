@@ -5,13 +5,13 @@ import {
   requireAdminToken,
   selectVisualFixtureTenant,
 } from "./helpers";
-import { VISUAL_FIXTURE } from "./visual-fixture";
+import { LIFECYCLE_E2E_FIXTURE } from "./lifecycle-fixture";
 
 test.beforeAll(() => {
   requireAdminToken();
 });
 
-test("checkpoint lifecycle: deactivate and reactivate fixture checkpoint", async ({ page }) => {
+test("checkpoint lifecycle: deactivate and reactivate scratch checkpoint", async ({ page }) => {
   await authenticate(page);
   await selectVisualFixtureTenant(page);
 
@@ -21,7 +21,7 @@ test("checkpoint lifecycle: deactivate and reactivate fixture checkpoint", async
   await page.waitForSelector(".checkpoints-view .list-row", { timeout: 10000 });
 
   const row = page.locator(".checkpoints-view .list-row", {
-    hasText: VISUAL_FIXTURE.checkpointName,
+    hasText: LIFECYCLE_E2E_FIXTURE.checkpointName,
   });
   const deactivate = row.locator(".list-row-promote", { hasText: "Deactivate" });
   await expect(deactivate).toBeVisible();
